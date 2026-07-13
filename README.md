@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ポートフォリオサイト
 
-## Getting Started
+AI で開発した作品と運動記録を載せるポートフォリオサイト。
+Notion を CMS として使い、GitHub Pages で公開する。
 
-First, run the development server:
+- 公開 URL: https://kantetsu-lab.github.io/
+- コンテンツ管理: Notion「ポートフォリオサイト管理」ページ配下の Projects / Workouts データベース
+
+## 更新のしかた
+
+1. Notion の **Projects**(作品) か **Workouts**(運動記録) データベースに行を追加・編集する
+   - Projects は `Published` にチェックを入れたものだけサイトに出る
+   - トップページに出したい作品は `Featured` にもチェック
+2. 反映タイミング
+   - **自動**: 毎日 5:00 JST に自動ビルド
+   - **すぐ反映したいとき**: GitHub リポジトリの Actions タブ → 「Deploy to GitHub Pages」→ 「Run workflow」ボタン
+
+## 開発
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
+npm run build      # 静的書き出し (out/)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`.env`(`.env.example` 参照) に `NOTION_TOKEN` を設定して `npm run fetch` を実行すると、
+Notion の最新コンテンツを `content/*.json` と `public/images/` に取り込める。
+トークン未設定の場合はコミット済みの JSON がそのまま使われる。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 構成
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Next.js 16 (App Router, `output: "export"` で完全静的)
+- Tailwind CSS v4 / motion (アニメーション) / Recharts (グラフ)
+- `scripts/fetch-content.mts` — ビルド前に Notion からコンテンツ取得。
+  Notion がホストする画像は URL が失効するためビルド時にダウンロードして同梱する
+- `.github/workflows/deploy.yml` — push / 毎日定時 / 手動ボタンでビルド & デプロイ

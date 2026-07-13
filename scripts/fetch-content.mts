@@ -9,7 +9,15 @@
 import { Client } from "@notionhq/client";
 import { NotionToMarkdown } from "notion-to-md";
 import { mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
+import process from "node:process";
+
+// ローカル実行用に .env があれば読み込む(既存の環境変数が優先)
+const envFile = path.join(import.meta.dirname, "..", ".env");
+if (existsSync(envFile)) {
+  process.loadEnvFile(envFile);
+}
 
 const NOTION_TOKEN = process.env.NOTION_TOKEN;
 const PROJECTS_DB_ID = process.env.NOTION_PROJECTS_DB_ID;
