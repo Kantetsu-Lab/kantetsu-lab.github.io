@@ -1,0 +1,53 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 毎日 5:00 JST (20:00 UTC) に Notion の最新内容で再ビルド
+    - cron: "0 20 * * *"
+  workflow_dispatch: # Actions タブの「Run workflow」ボタンで手動実行
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build (Notion からコンテンツ取得込み)
+        run: npm run build
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          # データソース ID は秘密情報ではないため直接記載
+          NOTION_PROJECTS_DB_ID: 61091131-04b5-483c-8539-d2ac8f683afc
+          NOTION_WORKOUTS_DB_ID: 31716a68-91bf-49e6-a390-89c2cb528660
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
