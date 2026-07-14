@@ -1,12 +1,92 @@
 [
-  { "id": "w1", "name": "朝ラン 5km", "date": "2026-07-12", "type": "ランニング", "duration": 32, "distance": 5.2, "memo": "ペース安定。暑さ対策で早朝に。" },
-  { "id": "w2", "name": "胸・肩の日", "date": "2026-07-10", "type": "筋トレ", "duration": 60, "distance": null, "memo": "ベンチプレス 60kg×8×3セット" },
-  { "id": "w3", "name": "夜ラン 8km", "date": "2026-07-08", "type": "ランニング", "duration": 48, "distance": 8.1, "memo": "" },
-  { "id": "w4", "name": "脚の日", "date": "2026-07-06", "type": "筋トレ", "duration": 55, "distance": null, "memo": "スクワット 80kg×8×3セット" },
-  { "id": "w5", "name": "ウォーキング", "date": "2026-07-05", "type": "ウォーキング", "duration": 40, "distance": 3.5, "memo": "" },
-  { "id": "w6", "name": "朝ラン 5km", "date": "2026-07-03", "type": "ランニング", "duration": 31, "distance": 5, "memo": "" },
-  { "id": "w7", "name": "背中・腕の日", "date": "2026-07-01", "type": "筋トレ", "duration": 65, "distance": null, "memo": "デッドリフト 100kg×5×3セット" },
-  { "id": "w8", "name": "サイクリング 20km", "date": "2026-06-28", "type": "サイクリング", "duration": 55, "distance": 20.3, "memo": "" },
-  { "id": "w9", "name": "朝ラン 10km", "date": "2026-06-26", "type": "ランニング", "duration": 62, "distance": 10, "memo": "今月最長。ラスト1kmペースアップできた。" },
-  { "id": "w10", "name": "胸・肩の日", "date": "2026-06-24", "type": "筋トレ", "duration": 60, "distance": null, "memo": "" }
+  {
+    "id": "39c0e401-817f-81c0-aabb-ca58684ba8e0",
+    "name": "朝ラン 5km",
+    "date": "2026-07-12",
+    "type": "ランニング",
+    "duration": 32,
+    "distance": 5.2,
+    "memo": "ペース安定。暑さ対策で早朝に。"
+  },
+  {
+    "id": "39c0e401-817f-81eb-a505-d1d673598f85",
+    "name": "胸・肩の日",
+    "date": "2026-07-10",
+    "type": "筋トレ",
+    "duration": 60,
+    "distance": null,
+    "memo": "ベンチプレス 60kg×8×3セット"
+  },
+  {
+    "id": "39c0e401-817f-8135-b4b6-dd3fa6a535ca",
+    "name": "夜ラン 8km",
+    "date": "2026-07-08",
+    "type": "ランニング",
+    "duration": 48,
+    "distance": 8.1,
+    "memo": ""
+  },
+  {
+    "id": "39c0e401-817f-8166-b13a-f2bc48486ded",
+    "name": "脚の日",
+    "date": "2026-07-06",
+    "type": "筋トレ",
+    "duration": 55,
+    "distance": null,
+    "memo": "スクワット 80kg×8×3セット"
+  },
+  {
+    "id": "39c0e401-817f-813f-b04a-f8b83ea68888",
+    "name": "ウォーキング",
+    "date": "2026-07-05",
+    "type": "ウォーキング",
+    "duration": 40,
+    "distance": 3.5,
+    "memo": ""
+  },
+  {
+    "id": "39c0e401-817f-81cb-99c5-fb28a5af7b99",
+    "name": "朝ラン 5km",
+    "date": "2026-07-03",
+    "type": "ランニング",
+    "duration": 31,
+    "distance": 5,
+    "memo": ""
+  },
+  {
+    "id": "39c0e401-817f-8113-8e2e-eae49a6062b1",
+    "name": "背中・腕の日",
+    "date": "2026-07-01",
+    "type": "筋トレ",
+    "duration": 65,
+    "distance": null,
+    "memo": "デッドリフト 100kg×5×3セット"
+  },
+  {
+    "id": "39c0e401-817f-8122-8df7-e56a3cca1198",
+    "name": "サイクリング 20km",
+    "date": "2026-06-28",
+    "type": "サイクリング",
+    "duration": 55,
+    "distance": 20.3,
+    "memo": ""
+  },
+  {
+    "id": "39c0e401-817f-81ce-9a26-f98a01fbe391",
+    "name": "朝ラン 10km",
+    "date": "2026-06-26",
+    "type": "ランニング",
+    "duration": 62,
+    "distance": 10,
+    "memo": "今月最長。ラスト1kmペースアップできた。"
+  },
+  {
+    "id": "39c0e401-817f-81de-9380-d668d5fe2ac8",
+    "name": "胸・肩の日",
+    "date": "2026-06-24",
+    "type": "筋トレ",
+    "duration": 60,
+    "distance": null,
+    "memo": ""
+  }
 ]

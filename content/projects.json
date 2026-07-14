@@ -1,41 +1,51 @@
 [
   {
-    "id": "39c0e401-817f-81dc-b6ef-f3a0679cddbf",
-    "name": "AIチャットボット",
-    "slug": "ai-chatbot",
-    "description": "Claude API を使った社内問い合わせ対応チャットボット。Slack 連携で自動応答。",
-    "tags": ["AI", "自動化"],
-    "date": "2026-05-20",
-    "featured": true,
+    "id": "39c0e401-817f-813b-b691-fd3a8b7c5173",
+    "name": "ポートフォリオサイト",
+    "slug": "portfolio-site",
+    "description": "Notion を CMS にしたこのサイト自体。Next.js + GitHub Pages で構築。",
+    "tags": [
+      "Web",
+      "AI"
+    ],
+    "date": "2026-07-13",
+    "featured": false,
     "githubUrl": null,
     "demoUrl": null,
     "cover": null,
-    "body": "## 概要\n\nClaude API を活用した社内向けの問い合わせ対応チャットボットです。Slack に常駐し、よくある質問に自動で回答します。\n\n## 使った技術\n\n- Claude API (Anthropic)\n- Slack Bolt SDK\n- Node.js / TypeScript\n\n## 工夫した点\n\n- 社内ドキュメントを検索して回答に反映する RAG 構成\n- 回答に自信がない場合は担当者にエスカレーション\n\n※ これはサンプル記事です。自分の作品に書き換えてください。"
+    "body": "\n## 概要\n\n\nこのポートフォリオサイトそのものです。Notion を CMS として使い、GitHub Actions で毎日自動ビルドしています。\n\n\n## 使った技術\n\n- Next.js 15 (静的エクスポート)\n- Tailwind CSS v4\n- Notion API\n- GitHub Pages / GitHub Actions\n"
   },
   {
     "id": "39c0e401-817f-812b-8664-f4d8bb62a660",
     "name": "求人票自動整理ツール",
     "slug": "job-organizer",
     "description": "PDF の求人票を AI が要約・分類してスプレッドシートに整理する自動化ツール。",
-    "tags": ["AI", "自動化", "ツール"],
+    "tags": [
+      "AI",
+      "自動化",
+      "ツール"
+    ],
     "date": "2026-06-15",
     "featured": true,
     "githubUrl": null,
     "demoUrl": null,
     "cover": null,
-    "body": "## 概要\n\n大量の PDF 求人票を読み取り、要点を要約・タグ付けしてスプレッドシートに自動転記するツールです。\n\n## 使った技術\n\n- Claude Code\n- Python\n- Google Sheets API\n\n※ これはサンプル記事です。自分の作品に書き換えてください。"
+    "body": "\n## 概要\n\n\n大量の PDF 求人票を読み取り、要点を要約・タグ付けしてスプレッドシートに自動転記するツールです。\n\n\n## 使った技術\n\n- Claude Code\n- Python\n- Google Sheets API\n\n※ これはサンプル記事です。自分の作品に書き換えてください。\n\n"
   },
   {
-    "id": "39c0e401-817f-813b-b691-fd3a8b7c5173",
-    "name": "ポートフォリオサイト",
-    "slug": "portfolio-site",
-    "description": "Notion を CMS にしたこのサイト自体。Next.js + GitHub Pages で構築。",
-    "tags": ["Web", "AI"],
-    "date": "2026-07-13",
-    "featured": false,
+    "id": "39c0e401-817f-81dc-b6ef-f3a0679cddbf",
+    "name": "AIチャットボット",
+    "slug": "ai-chatbot",
+    "description": "Claude API を使った社内問い合わせ対応チャットボット。Slack 連携で自動応答。",
+    "tags": [
+      "AI",
+      "自動化"
+    ],
+    "date": "2026-05-20",
+    "featured": true,
     "githubUrl": null,
     "demoUrl": null,
     "cover": null,
-    "body": "## 概要\n\nこのポートフォリオサイトそのものです。Notion を CMS として使い、GitHub Actions で毎日自動ビルドしています。\n\n## 使った技術\n\n- Next.js 15 (静的エクスポート)\n- Tailwind CSS v4\n- Notion API\n- GitHub Pages / GitHub Actions"
+    "body": "\n## 概要\n\n\nClaude API を活用した社内向けの問い合わせ対応チャットボットです。Slack に常駐し、よくある質問に自動で回答します。\n\n\n## 使った技術\n\n- Claude API (Anthropic)\n- Slack Bolt SDK\n- Node.js / TypeScript\n\n## 工夫した点\n\n- 社内ドキュメントを検索して回答に反映する RAG 構成\n- 回答に自信がない場合は担当者にエスカレーション\n\n※ これはサンプル記事です。自分の作品に書き換えてください。\n\n"
   }
 ]
