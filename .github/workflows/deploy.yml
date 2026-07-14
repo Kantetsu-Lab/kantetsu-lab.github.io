@@ -37,6 +37,7 @@ jobs:
           # データソース ID は秘密情報ではないため直接記載
           NOTION_PROJECTS_DB_ID: 61091131-04b5-483c-8539-d2ac8f683afc
           NOTION_WORKOUTS_DB_ID: 31716a68-91bf-49e6-a390-89c2cb528660
+          NOTION_EVENTS_DB_ID: 15e58471-4c87-41dc-888c-f7d8bc8aa1f2
 
       - uses: actions/upload-pages-artifact@v3
         with:

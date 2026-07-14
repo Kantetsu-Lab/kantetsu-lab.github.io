@@ -1,5 +1,6 @@
 import projectsJson from "../../content/projects.json";
 import workoutsJson from "../../content/workouts.json";
+import eventsJson from "../../content/events.json";
 
 export type Project = {
   id: string;
@@ -41,6 +42,23 @@ export function getProject(slug: string): Project | undefined {
 
 export function getWorkouts(): Workout[] {
   return (workoutsJson as Workout[])
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export type SportEvent = {
+  id: string;
+  name: string;
+  date: string;
+  type: string;
+  result: string;
+  location: string;
+  url: string | null;
+  memo: string;
+};
+
+export function getEvents(): SportEvent[] {
+  return (eventsJson as SportEvent[])
     .slice()
     .sort((a, b) => b.date.localeCompare(a.date));
 }

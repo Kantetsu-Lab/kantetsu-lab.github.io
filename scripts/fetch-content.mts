@@ -22,6 +22,7 @@ if (existsSync(envFile)) {
 const NOTION_TOKEN = process.env.NOTION_TOKEN;
 const PROJECTS_DB_ID = process.env.NOTION_PROJECTS_DB_ID;
 const WORKOUTS_DB_ID = process.env.NOTION_WORKOUTS_DB_ID;
+const EVENTS_DB_ID = process.env.NOTION_EVENTS_DB_ID;
 
 const ROOT = path.join(import.meta.dirname, "..");
 const CONTENT_DIR = path.join(ROOT, "content");
@@ -151,11 +152,38 @@ async function fetchWorkouts() {
     .filter((w) => w.date);
 }
 
+async function fetchEvents() {
+  if (!EVENTS_DB_ID) return null;
+  const pages = await queryAll(EVENTS_DB_ID, {
+    sorts: [{ property: "Date", direction: "descending" }],
+  });
+
+  return pages
+    .map((page: any) => {
+      const p = page.properties;
+      return {
+        id: page.id,
+        name: plainText(p.Name),
+        date: p.Date?.date?.start ?? null,
+        type: p.Type?.select?.name ?? "その他",
+        result: plainText(p.Result),
+        location: plainText(p.Location),
+        url: p.URL?.url ?? null,
+        memo: plainText(p.Memo),
+      };
+    })
+    .filter((e) => e.date);
+}
+
 async function main() {
   await mkdir(CONTENT_DIR, { recursive: true });
   await mkdir(IMAGES_DIR, { recursive: true });
 
-  const [projects, workouts] = await Promise.all([fetchProjects(), fetchWorkouts()]);
+  const [projects, workouts, events] = await Promise.all([
+    fetchProjects(),
+    fetchWorkouts(),
+    fetchEvents(),
+  ]);
 
   await writeFile(
     path.join(CONTENT_DIR, "projects.json"),
@@ -165,9 +193,15 @@ async function main() {
     path.join(CONTENT_DIR, "workouts.json"),
     JSON.stringify(workouts, null, 2)
   );
+  if (events) {
+    await writeFile(
+      path.join(CONTENT_DIR, "events.json"),
+      JSON.stringify(events, null, 2)
+    );
+  }
 
   console.log(
-    `[fetch-content] 完了: projects ${projects.length}件 / workouts ${workouts.length}件`
+    `[fetch-content] 完了: projects ${projects.length}件 / workouts ${workouts.length}件 / events ${events?.length ?? "スキップ"}件`
   );
 }
 
