@@ -1,12 +1,22 @@
 import Link from "next/link";
 import Reveal from "@/components/Reveal";
 import ProjectCard from "@/components/ProjectCard";
-import { getFeaturedProjects, getWorkouts } from "@/lib/content";
+import AboutSection from "@/components/AboutSection";
+import { getFeaturedProjects, getProjects, getWorkouts } from "@/lib/content";
 import { recentStats } from "@/lib/stats";
 
 export default function Home() {
   const featured = getFeaturedProjects();
-  const stats = recentStats(getWorkouts());
+  const projects = getProjects();
+  const workouts = getWorkouts();
+  const stats = recentStats(workouts);
+
+  const facts = [
+    { label: "公開作品", value: `${projects.length}`, unit: "点" },
+    { label: "運動記録", value: `${workouts.length}`, unit: "件" },
+    { label: "主要工具", value: "Claude Code", unit: "" },
+    { label: "稼働開始", value: "2026.07", unit: "—" },
+  ];
 
   return (
     <div>
@@ -46,6 +56,27 @@ export default function Home() {
         </Reveal>
       </section>
 
+      {/* 数値ストリップ */}
+      <section className="border-y border-border-soft">
+        <div className="mx-auto grid max-w-5xl grid-cols-2 gap-y-8 px-6 py-12 md:grid-cols-4">
+          {facts.map((f, i) => (
+            <Reveal key={f.label} delay={i * 0.08}>
+              <div className="text-center">
+                <p className="text-xs text-muted">{f.label}</p>
+                <p className="mt-1 text-xl font-semibold tracking-tight md:text-2xl">
+                  {f.value}
+                  {f.unit && (
+                    <span className="ml-0.5 text-sm font-medium text-muted">
+                      {f.unit}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
       {/* 注目プロジェクト */}
       <section className="mx-auto max-w-5xl px-6 pb-28">
         <Reveal>
@@ -62,6 +93,9 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {/* 自己紹介 */}
+      <AboutSection />
 
       {/* 運動サマリー */}
       <section className="border-t border-border-soft bg-card">

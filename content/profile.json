@@ -1,0 +1,25 @@
+{
+  "name": "Kaito Shimomura",
+  "title": "AI活用 × ものづくり",
+  "bio": "生成 AI を使ったツール開発と業務自動化に取り組んでいます。Claude Code をはじめとする AI エージェントと共同で、アイデアをすばやくかたちにするのが得意です。体を動かすことも好きで、ランニングと筋トレを継続中。",
+  "facts": [
+    { "label": "拠点", "value": "日本" },
+    { "label": "主要工具", "value": "Claude Code / Claude API" },
+    { "label": "稼働開始", "value": "2026.07 —" }
+  ],
+  "tools": [
+    "Claude Code",
+    "Claude API",
+    "Next.js",
+    "TypeScript",
+    "Python",
+    "Notion",
+    "GitHub Actions",
+    "Google Workspace"
+  ],
+  "strengths": [],
+  "strengthsNote": "ストレングスファインダーの TOP5 をここに入れると自己紹介に表示されます。空のままなら非表示。",
+  "links": [
+    { "label": "GitHub", "url": "https://github.com/Kantetsu-Lab" }
+  ]
+}

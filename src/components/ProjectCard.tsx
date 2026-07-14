@@ -3,11 +3,17 @@ import Image from "next/image";
 import type { Project } from "@/lib/content";
 import { formatDate } from "@/lib/content";
 
-export default function ProjectCard({ project }: { project: Project }) {
+export default function ProjectCard({
+  project,
+  number,
+}: {
+  project: Project;
+  number?: number;
+}) {
   return (
     <Link
       href={`/projects/${project.slug}/`}
-      className="group flex flex-col overflow-hidden rounded-3xl bg-card transition-transform duration-300 ease-out hover:-translate-y-1 hover:shadow-xl"
+      className="group flex h-full flex-col overflow-hidden rounded-3xl bg-card transition-transform duration-300 ease-out hover:-translate-y-1 hover:shadow-xl"
     >
       {project.cover && (
         <div className="relative aspect-[16/9] overflow-hidden">
@@ -20,6 +26,14 @@ export default function ProjectCard({ project }: { project: Project }) {
         </div>
       )}
       <div className="flex flex-1 flex-col gap-3 p-7">
+        <div className="flex items-center gap-3">
+          {number != null && (
+            <span className="font-mono text-xs font-semibold tracking-wider text-muted">
+              No.{String(number).padStart(2, "0")}
+            </span>
+          )}
+          <span className="text-xs text-muted">{formatDate(project.date)}</span>
+        </div>
         <div className="flex flex-wrap gap-2">
           {project.tags.map((tag) => (
             <span
@@ -32,8 +46,7 @@ export default function ProjectCard({ project }: { project: Project }) {
         </div>
         <h3 className="text-xl font-semibold tracking-tight">{project.name}</h3>
         <p className="text-sm leading-relaxed text-muted">{project.description}</p>
-        <div className="mt-auto flex items-center justify-between pt-2">
-          <span className="text-xs text-muted">{formatDate(project.date)}</span>
+        <div className="mt-auto flex items-center justify-end pt-2">
           <span className="text-sm font-medium text-accent transition-transform duration-300 group-hover:translate-x-1">
             詳しく見る →
           </span>

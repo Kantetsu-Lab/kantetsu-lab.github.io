@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Reveal from "@/components/Reveal";
-import ProjectCard from "@/components/ProjectCard";
+import ProjectsGrid from "@/components/ProjectsGrid";
 import { getProjects } from "@/lib/content";
 
 export const metadata: Metadata = {
@@ -22,13 +22,11 @@ export default function ProjectsPage() {
           Claude をはじめとする AI を活用して開発した作品たちです。
         </p>
       </Reveal>
-      <div className="mt-12 grid gap-6 md:grid-cols-2">
-        {projects.map((project, i) => (
-          <Reveal key={project.id} delay={(i % 2) * 0.1}>
-            <ProjectCard project={project} />
-          </Reveal>
-        ))}
-      </div>
+      <Reveal delay={0.1}>
+        <div className="mt-12">
+          <ProjectsGrid projects={projects} />
+        </div>
+      </Reveal>
       {projects.length === 0 && (
         <p className="mt-12 text-muted">
           まだ作品がありません。Notion の Projects データベースに追加して
