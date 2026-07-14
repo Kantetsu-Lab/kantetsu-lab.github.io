@@ -14,8 +14,8 @@ export default function ProjectsPage() {
   return (
     <div className="mx-auto max-w-5xl px-6 py-24">
       <Reveal>
-        <p className="text-sm font-medium text-accent">Projects</p>
-        <h1 className="mt-2 text-4xl font-semibold tracking-tight md:text-5xl">
+        <p className="font-pixel text-sm font-bold tracking-widest text-accent">PROJECTS</p>
+        <h1 className="font-pixel mt-2 text-3xl font-bold tracking-tight md:text-5xl">
           AI でつくったもの
         </h1>
         <p className="mt-4 max-w-xl text-muted">

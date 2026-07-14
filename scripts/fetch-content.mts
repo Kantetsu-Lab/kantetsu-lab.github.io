@@ -172,6 +172,10 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error("[fetch-content] 失敗:", e);
-  process.exit(1);
+  // 取得失敗でもビルドは止めない(既存の content/*.json をそのまま使う)。
+  // インテグレーション未接続・トークン失効などで毎日ビルドが死なないようにする。
+  console.warn(
+    "[fetch-content] Notion 取得に失敗したため、既存の content/*.json を使います:",
+    e?.message ?? e
+  );
 });

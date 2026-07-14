@@ -15,17 +15,23 @@ export default function Header() {
 
   return (
     <header
-      className="fixed inset-x-0 top-0 z-50 border-b border-border-soft backdrop-blur-xl"
-      style={{ background: "var(--glass)" }}
+      className="fixed inset-x-0 top-0 z-50 backdrop-blur-xl"
+      style={{
+        background: "var(--glass)",
+        borderBottom: "3px solid var(--line)",
+      }}
     >
-      <nav className="mx-auto flex h-12 max-w-5xl items-center justify-between gap-4 px-6">
+      <nav className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-6">
         <Link
           href="/"
-          className="whitespace-nowrap text-sm font-semibold tracking-tight"
+          className="font-pixel whitespace-nowrap text-base font-bold tracking-tight"
         >
+          <span className="mr-1 inline-block rounded-md bg-accent px-1.5 py-0.5 text-sm text-white">
+            KS
+          </span>
           Kaito Shimomura
         </Link>
-        <div className="flex items-center gap-4 md:gap-6">
+        <div className="flex items-center gap-2 md:gap-3">
           {links.map((link) => {
             const active =
               link.href === "/"
@@ -35,10 +41,12 @@ export default function Header() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`whitespace-nowrap text-xs transition-colors duration-200 ${
+                className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold transition-colors duration-200 ${
                   link.desktopOnly ? "hidden md:block " : ""
                 }${
-                  active ? "text-foreground font-medium" : "text-muted hover:text-foreground"
+                  active
+                    ? "bg-line text-background"
+                    : "text-muted hover:text-foreground"
                 }`}
               >
                 {link.label}

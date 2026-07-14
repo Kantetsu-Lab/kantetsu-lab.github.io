@@ -32,7 +32,7 @@ export default function WorkoutCharts({
   return (
     <div className="grid gap-6 lg:grid-cols-5">
       {/* 週次の運動時間 */}
-      <div className="rounded-3xl bg-card p-7 lg:col-span-3">
+      <div className="pop-card p-7 lg:col-span-3">
         <h3 className="text-sm font-medium text-muted">週ごとの運動時間（分）</h3>
         <div className="mt-6 h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -67,7 +67,7 @@ export default function WorkoutCharts({
       </div>
 
       {/* 種目の内訳 */}
-      <div className="rounded-3xl bg-card p-7 lg:col-span-2">
+      <div className="pop-card p-7 lg:col-span-2">
         <h3 className="text-sm font-medium text-muted">種目の内訳（回数）</h3>
         <div className="mt-2 h-44">
           <ResponsiveContainer width="100%" height="100%">

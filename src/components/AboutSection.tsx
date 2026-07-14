@@ -14,8 +14,10 @@ export default function AboutSection() {
   return (
     <section id="about" className="mx-auto max-w-5xl scroll-mt-16 px-6 py-24">
       <Reveal>
-        <p className="text-sm font-medium text-accent">About</p>
-        <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
+        <p className="font-pixel text-sm font-bold tracking-widest text-accent">
+          02 / ABOUT
+        </p>
+        <h2 className="font-pixel mt-2 text-2xl font-bold tracking-tight md:text-4xl">
           自己紹介
         </h2>
       </Reveal>
@@ -23,7 +25,7 @@ export default function AboutSection() {
       <div className="mt-10 grid gap-6 lg:grid-cols-5">
         {/* プロフィール */}
         <Reveal className="lg:col-span-3">
-          <div className="flex h-full flex-col rounded-3xl bg-card p-8">
+          <div className="flex h-full flex-col pop-card p-8">
             <h3 className="text-2xl font-semibold tracking-tight">
               {profile.name}
             </h3>
@@ -59,7 +61,7 @@ export default function AboutSection() {
 
         {/* ツール */}
         <Reveal delay={0.1} className="lg:col-span-2">
-          <div className="flex h-full flex-col rounded-3xl bg-card p-8">
+          <div className="flex h-full flex-col pop-card p-8">
             <h3 className="text-sm font-medium text-muted">よく使う道具</h3>
             <div className="mt-5 flex flex-wrap gap-2">
               {profile.tools.map((tool) => (
@@ -78,7 +80,7 @@ export default function AboutSection() {
       {/* 強み (ストレングスファインダー) — 空なら非表示 */}
       {strengths.length > 0 && (
         <Reveal delay={0.15}>
-          <div className="mt-6 rounded-3xl bg-card p-8">
+          <div className="mt-6 pop-card p-8">
             <h3 className="text-sm font-medium text-muted">
               強み — StrengthsFinder TOP{strengths.length}
             </h3>

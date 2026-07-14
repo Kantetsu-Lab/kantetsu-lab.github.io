@@ -40,9 +40,9 @@ export default function ProjectsGrid({ projects }: { projects: Project[] }) {
             <button
               key={tag}
               onClick={() => setActive(tag)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors duration-200 ${
+              className={`pop-btn rounded-full px-4 py-1.5 text-sm font-bold transition-colors duration-200 ${
                 active === tag
-                  ? "bg-foreground text-background"
+                  ? "bg-line text-background"
                   : "bg-card text-muted hover:text-foreground"
               }`}
             >

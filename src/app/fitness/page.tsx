@@ -27,8 +27,8 @@ export default function FitnessPage() {
   return (
     <div className="mx-auto max-w-5xl px-6 py-24">
       <Reveal>
-        <p className="text-sm font-medium text-accent">Fitness</p>
-        <h1 className="mt-2 text-4xl font-semibold tracking-tight md:text-5xl">
+        <p className="font-pixel text-sm font-bold tracking-widest text-accent">FITNESS</p>
+        <h1 className="font-pixel mt-2 text-3xl font-bold tracking-tight md:text-5xl">
           運動記録
         </h1>
         <p className="mt-4 max-w-xl text-muted">
@@ -48,7 +48,7 @@ export default function FitnessPage() {
             },
             { value: `${stats.totalDistance}`, unit: "km", label: "移動距離" },
           ].map((s) => (
-            <div key={s.label} className="rounded-3xl bg-card p-6 text-center md:p-8">
+            <div key={s.label} className="pop-card p-6 text-center md:p-8">
               <p className="text-3xl font-semibold tracking-tight md:text-4xl">
                 {s.value}
                 {s.unit && (
@@ -70,14 +70,14 @@ export default function FitnessPage() {
 
       {/* 活動ログ */}
       <Reveal delay={0.2}>
-        <h2 className="mt-16 text-2xl font-semibold tracking-tight">
+        <h2 className="font-pixel mt-16 text-2xl font-bold tracking-tight">
           アクティビティ
         </h2>
       </Reveal>
       <div className="mt-6 space-y-3">
         {workouts.map((w, i) => (
           <Reveal key={w.id} delay={Math.min(i * 0.04, 0.3)}>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl bg-card px-6 py-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pop-card rounded-2xl px-6 py-4">
               <span
                 className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${TYPE_BADGE[w.type] ?? TYPE_BADGE["その他"]}`}
               >
