@@ -14,6 +14,13 @@
   --line: #1a140e;
   --border: rgba(26, 20, 14, 0.14);
   --glass: rgba(247, 239, 225, 0.85);
+  /* 走行シーンの空(昼) */
+  --scene-sky-top: #a7d7ee;
+  --scene-sky-bottom: #f0ead6;
+  --scene-sun-core: #fff3b0;
+  --scene-sun: #ffd75e;
+  --scene-sun-glow: rgba(255, 210, 90, 0.4);
+  --scene-stars-opacity: 0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +37,13 @@
     --line: #f7efe1;
     --border: rgba(247, 239, 225, 0.18);
     --glass: rgba(25, 19, 16, 0.85);
+    /* 走行シーンの空(夜) */
+    --scene-sky-top: #10182f;
+    --scene-sky-bottom: #3b2c3c;
+    --scene-sun-core: #f5f3e4;
+    --scene-sun: #d9d6c3;
+    --scene-sun-glow: rgba(235, 230, 200, 0.25);
+    --scene-stars-opacity: 0.9;
   }
 }
 
@@ -147,45 +161,74 @@ body {
 /* 景色レイヤー: 奥ほどゆっくり流れるパララックス */
 @keyframes scene-clouds-move {
   from { background-position-x: 0; }
-  to { background-position-x: -360px; }
+  to { background-position-x: -480px; }
+}
+@keyframes scene-mountains-far-move {
+  from { background-position-x: 0; }
+  to { background-position-x: -480px; }
 }
 @keyframes scene-mountains-move {
   from { background-position-x: 0; }
-  to { background-position-x: -320px; }
+  to { background-position-x: -360px; }
 }
 @keyframes scene-trees-move {
   from { background-position-x: 0; }
-  to { background-position-x: -240px; }
+  to { background-position-x: -300px; }
 }
+
+/* 空 */
+.scene-sky {
+  background: linear-gradient(to bottom, var(--scene-sky-top), var(--scene-sky-bottom));
+}
+
+/* 星(夜のみ表示) */
+.scene-stars {
+  opacity: var(--scene-stars-opacity);
+  background-repeat: repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='90'%3E%3Cg fill='%23ffffff'%3E%3Crect x='12' y='14' width='2' height='2'/%3E%3Crect x='58' y='30' width='2' height='2'/%3E%3Crect x='96' y='10' width='3' height='3' opacity='0.9'/%3E%3Crect x='126' y='44' width='2' height='2'/%3E%3Crect x='36' y='58' width='2' height='2' opacity='0.7'/%3E%3Crect x='82' y='70' width='2' height='2' opacity='0.6'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* 雲: 白い本体 + 底面の陰影、輪郭線なしの柔らかいドット雲 */
 .scene-clouds {
   background-repeat: repeat-x;
-  background-position: bottom;
-  animation: scene-clouds-move 26s linear infinite;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='48'%3E%3Cg fill='%23ffffff' stroke='%231a140e' stroke-width='2'%3E%3Crect x='20' y='18' width='60' height='16' rx='4'/%3E%3Crect x='34' y='8' width='28' height='12' rx='4'/%3E%3Crect x='210' y='26' width='44' height='12' rx='4'/%3E%3Crect x='222' y='18' width='20' height='10' rx='4'/%3E%3C/g%3E%3C/svg%3E");
+  background-position: top;
+  animation: scene-clouds-move 40s linear infinite;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='72'%3E%3Cg%3E%3Cg fill='%23ffffff' opacity='0.92'%3E%3Crect x='30' y='26' width='86' height='18' rx='9'/%3E%3Crect x='46' y='14' width='36' height='18' rx='9'/%3E%3Crect x='72' y='20' width='30' height='14' rx='7'/%3E%3C/g%3E%3Crect x='36' y='38' width='74' height='6' rx='3' fill='%23c6d9e4' opacity='0.85'/%3E%3Cg fill='%23ffffff' opacity='0.85'%3E%3Crect x='230' y='34' width='62' height='14' rx='7'/%3E%3Crect x='244' y='24' width='30' height='14' rx='7'/%3E%3C/g%3E%3Crect x='236' y='42' width='50' height='5' rx='2.5' fill='%23c6d9e4' opacity='0.8'/%3E%3Cg fill='%23ffffff' opacity='0.75'%3E%3Crect x='384' y='12' width='56' height='12' rx='6'/%3E%3Crect x='396' y='4' width='26' height='12' rx='6'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
 }
+
+/* 山(遠景): 青みがかった霞んだ稜線 + 冠雪 */
+.scene-mountains-far {
+  background-repeat: repeat-x;
+  background-position: bottom;
+  animation: scene-mountains-far-move 30s linear infinite;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='110'%3E%3Cg fill='%23a3b8c8' opacity='0.75'%3E%3Crect x='0' y='92' width='480' height='18'/%3E%3Crect x='24' y='76' width='120' height='18'/%3E%3Crect x='44' y='60' width='80' height='18'/%3E%3Crect x='64' y='44' width='40' height='18'/%3E%3Crect x='76' y='32' width='16' height='14'/%3E%3Crect x='200' y='72' width='160' height='22'/%3E%3Crect x='228' y='52' width='104' height='22'/%3E%3Crect x='256' y='32' width='48' height='22'/%3E%3Crect x='272' y='16' width='16' height='18'/%3E%3Crect x='390' y='80' width='80' height='14'/%3E%3Crect x='406' y='68' width='44' height='14'/%3E%3C/g%3E%3Cg fill='%23f2f7f9' opacity='0.9'%3E%3Crect x='74' y='30' width='20' height='7'/%3E%3Crect x='70' y='37' width='8' height='4'/%3E%3Crect x='268' y='14' width='24' height='8'/%3E%3Crect x='264' y='22' width='9' height='5'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* 山(近景): 深緑の丘 */
 .scene-mountains {
   background-repeat: repeat-x;
   background-position: bottom;
   animation: scene-mountains-move 14s linear infinite;
-  opacity: 0.3;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='80'%3E%3Cg fill='%238a6f4d'%3E%3Crect x='20' y='64' width='120' height='16'/%3E%3Crect x='36' y='48' width='88' height='16'/%3E%3Crect x='52' y='32' width='56' height='16'/%3E%3Crect x='68' y='16' width='24' height='16'/%3E%3Crect x='188' y='64' width='104' height='16'/%3E%3Crect x='208' y='48' width='64' height='16'/%3E%3Crect x='224' y='32' width='32' height='16'/%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='84'%3E%3Cg fill='%23697c58' opacity='0.9'%3E%3Crect x='0' y='68' width='360' height='16'/%3E%3Crect x='20' y='52' width='110' height='18'/%3E%3Crect x='40' y='36' width='70' height='18'/%3E%3Crect x='56' y='22' width='38' height='16'/%3E%3Crect x='190' y='56' width='130' height='14'/%3E%3Crect x='214' y='42' width='82' height='16'/%3E%3Crect x='238' y='28' width='34' height='16'/%3E%3C/g%3E%3Cg fill='%237e9168' opacity='0.9'%3E%3Crect x='56' y='22' width='12' height='46'/%3E%3Crect x='238' y='28' width='10' height='40'/%3E%3C/g%3E%3C/svg%3E");
 }
+
+/* 木々: 段々の松 + 茂み + 草 */
 .scene-trees {
   background-repeat: repeat-x;
   background-position: bottom;
   animation: scene-trees-move 4.5s linear infinite;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='56'%3E%3Cg%3E%3Crect x='34' y='40' width='10' height='16' fill='%237a4c22'/%3E%3Crect x='18' y='16' width='42' height='26' fill='%231fa356'/%3E%3Crect x='28' y='6' width='22' height='12' fill='%231fa356'/%3E%3Crect x='140' y='42' width='34' height='14' rx='3' fill='%2327b465'/%3E%3Crect x='148' y='34' width='18' height='10' rx='3' fill='%2327b465'/%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='72'%3E%3Cg%3E%3Crect x='56' y='58' width='10' height='14' fill='%236b4a26'/%3E%3Cg fill='%232c6e49'%3E%3Crect x='36' y='42' width='50' height='16'/%3E%3Crect x='42' y='28' width='38' height='14'/%3E%3Crect x='48' y='14' width='26' height='14'/%3E%3Crect x='54' y='4' width='14' height='10'/%3E%3C/g%3E%3Cg fill='%233f8f5f'%3E%3Crect x='36' y='42' width='8' height='4'/%3E%3Crect x='42' y='28' width='7' height='4'/%3E%3Crect x='48' y='14' width='6' height='4'/%3E%3C/g%3E%3Crect x='184' y='60' width='8' height='12' fill='%236b4a26'/%3E%3Cg fill='%232c6e49'%3E%3Crect x='166' y='46' width='44' height='14'/%3E%3Crect x='172' y='34' width='32' height='12'/%3E%3Crect x='178' y='22' width='20' height='12'/%3E%3C/g%3E%3Cg fill='%233f8f5f'%3E%3Crect x='238' y='56' width='44' height='16' rx='8'/%3E%3Crect x='246' y='48' width='26' height='10' rx='5'/%3E%3C/g%3E%3Cg fill='%233f8f5f'%3E%3Crect x='10' y='66' width='6' height='6'/%3E%3Crect x='120' y='66' width='6' height='6'/%3E%3Crect x='226' y='66' width='6' height='6'/%3E%3Crect x='290' y='66' width='5' height='6'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
 }
 
-/* 太陽 */
+/* 太陽(昼) / 月(夜): 柔らかい光のにじみ */
 @keyframes sun-glow {
-  0%, 100% { box-shadow: 0 0 0 6px rgba(255, 197, 49, 0.35); }
-  50% { box-shadow: 0 0 0 12px rgba(255, 197, 49, 0.18); }
+  0%, 100% { box-shadow: 0 0 24px 10px var(--scene-sun-glow); }
+  50% { box-shadow: 0 0 36px 18px var(--scene-sun-glow); }
 }
 .scene-sun {
-  background: var(--pop-yellow);
-  border: 3px solid var(--line);
-  animation: sun-glow 3s ease-in-out infinite;
+  background: radial-gradient(circle at 35% 35%, var(--scene-sun-core), var(--scene-sun));
+  border-radius: 9999px;
+  animation: sun-glow 4s ease-in-out infinite;
 }
 
 /* スピード線 */
@@ -234,7 +277,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .marquee-track, .ride-bob, .road-lines, .speed-line,
   .engine-beat, .beat-ring, .idle-shake,
-  .scene-clouds, .scene-mountains, .scene-trees, .scene-sun {
+  .scene-clouds, .scene-mountains, .scene-mountains-far,
+  .scene-trees, .scene-sun {
     animation: none;
   }
 }

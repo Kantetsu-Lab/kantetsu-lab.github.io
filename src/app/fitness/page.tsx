@@ -100,10 +100,7 @@ export default function FitnessPage() {
           <div className="mt-6 grid gap-5 md:grid-cols-3">
             {events.map((e, i) => (
               <Reveal key={e.id} delay={Math.min(i * 0.08, 0.3)}>
-                <div
-                  className="pop-card pop-card-hover flex h-full flex-col gap-3 p-6"
-                  style={{ transform: `rotate(${i % 2 === 0 ? -0.8 : 0.8}deg)` }}
-                >
+                <div className="pop-card pop-card-hover flex h-full flex-col gap-3 p-6">
                   <div className="flex items-center justify-between gap-2">
                     <span
                       className="rounded-full px-2.5 py-0.5 text-[11px] font-bold text-white"

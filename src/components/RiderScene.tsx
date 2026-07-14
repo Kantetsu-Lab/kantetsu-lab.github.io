@@ -2,34 +2,41 @@
 
 /**
  * ヒーロー下の走行シーン。
- * 奥から: 太陽・雲(ゆっくり) → 山(中speed) → 木(速い) → ライダー → 路面。
- * 奥ほど遅く流すパララックスで走っている感を出す。
+ * 空(昼/夜グラデーション) → 星(夜のみ) → 太陽/月 → 雲 → 遠景の山 →
+ * 近景の丘 → 木々 → 草地 → ライダー → 路面。奥ほど遅いパララックス。
  */
 export default function RiderScene({ riderSrc }: { riderSrc: string }) {
   return (
     <div
-      className="relative w-full overflow-hidden border-y-3 bg-card"
-      style={{ borderColor: "var(--line)", borderTopWidth: 3, borderBottomWidth: 3 }}
+      className="scene-sky relative w-full overflow-hidden"
+      style={{
+        borderTop: "3px solid var(--line)",
+        borderBottom: "3px solid var(--line)",
+      }}
       aria-hidden
     >
-      {/* 太陽 */}
-      <div className="scene-sun absolute right-[12%] top-5 h-10 w-10 rounded-lg md:h-12 md:w-12" />
+      {/* 星(夜のみ) */}
+      <div className="scene-stars absolute inset-x-0 top-0 h-28" />
+
+      {/* 太陽 / 月 */}
+      <div className="scene-sun absolute right-[12%] top-6 h-11 w-11 md:h-14 md:w-14" />
 
       {/* 雲 (最奥) */}
-      <div className="scene-clouds absolute inset-x-0 top-2 h-12" />
+      <div className="scene-clouds absolute inset-x-0 top-3 h-20" />
 
-      {/* 山 (奥) */}
-      <div className="scene-mountains absolute inset-x-0 bottom-9 h-20" />
+      {/* 山: 遠景 → 近景 */}
+      <div className="scene-mountains-far absolute inset-x-0 bottom-11 h-28" />
+      <div className="scene-mountains absolute inset-x-0 bottom-11 h-[84px]" />
 
-      {/* 木 (中景) */}
-      <div className="scene-trees absolute inset-x-0 bottom-9 h-14" />
+      {/* 木々 */}
+      <div className="scene-trees absolute inset-x-0 bottom-11 h-[72px]" />
 
-      <div className="relative mx-auto h-48 max-w-5xl md:h-56">
+      <div className="relative mx-auto h-52 max-w-5xl md:h-60">
         {/* スピード線 */}
-        {[42, 56, 70].map((top, i) => (
+        {[46, 58, 70].map((top, i) => (
           <div
             key={top}
-            className="speed-line absolute z-10 h-[3px] w-12 rounded-full bg-line/50"
+            className="speed-line absolute z-10 h-[3px] w-12 rounded-full bg-line/40"
             style={{
               top: `${top}%`,
               left: `${18 + i * 6}%`,
@@ -49,13 +56,16 @@ export default function RiderScene({ riderSrc }: { riderSrc: string }) {
         </div>
       </div>
 
+      {/* 草地 */}
+      <div className="relative h-2 w-full" style={{ background: "#4c8a52" }} />
+
       {/* 路面 */}
-      <div className="relative h-9 w-full bg-line pt-4">
+      <div className="relative h-9 w-full bg-line pt-4" style={{ background: "#3a3733" }}>
         <div
           className="road-lines h-[3px] w-full"
           style={{
             backgroundImage:
-              "repeating-linear-gradient(to right, var(--background) 0 60px, transparent 60px 120px)",
+              "repeating-linear-gradient(to right, #f2ead8 0 60px, transparent 60px 120px)",
           }}
         />
       </div>

@@ -32,10 +32,11 @@ export default function Home() {
           <p className="font-pixel text-sm tracking-widest text-accent">
             KAITO SHIMOMURA — PORTFOLIO
           </p>
-          <h1 className="font-pixel mt-4 text-4xl font-bold leading-tight tracking-tight md:text-6xl">
-            つくる。走る。
+          <h1 className="font-pixel mt-4 text-3xl font-bold leading-tight tracking-tight sm:text-4xl md:text-6xl">
+            <span className="inline-block">つくる。</span>
+            <span className="inline-block">走る。</span>
             <br />
-            <span className="text-accent">記録する。</span>
+            <span className="inline-block text-accent">記録する。</span>
           </h1>
         </Reveal>
         <Reveal delay={0.15}>
@@ -74,12 +75,9 @@ export default function Home() {
         <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
           {facts.map((f, i) => (
             <Reveal key={f.label} delay={i * 0.08}>
-              <div
-                className="pop-card p-5 text-center"
-                style={{ transform: `rotate(${i % 2 === 0 ? -1 : 1}deg)` }}
-              >
+              <div className="pop-card flex h-full flex-col items-center justify-between gap-3 p-5 text-center">
                 <p
-                  className="font-pixel text-xs font-bold text-white"
+                  className="font-pixel whitespace-nowrap text-xs font-bold text-white"
                   style={{
                     background: f.color,
                     borderRadius: 999,
@@ -90,7 +88,7 @@ export default function Home() {
                 >
                   {f.label}
                 </p>
-                <p className="mt-3 text-xl font-extrabold tracking-tight md:text-2xl">
+                <p className="text-xl font-extrabold tracking-tight md:text-2xl">
                   {f.value}
                   {f.unit && (
                     <span className="ml-0.5 text-sm font-bold text-muted">
