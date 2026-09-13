@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Google Apps Script (別ランタイム・グローバル関数前提)
+    "gas/**",
   ]),
 ]);
 

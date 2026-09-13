@@ -1,0 +1,16 @@
+{
+  "scriptId": "ここにスクリプトIDを貼る（Apps Script エディタ → プロジェクトの設定）",
+  "rootDir": "src",
+  "filePushOrder": [
+    "src/00_Config.js",
+    "src/10_Util.js",
+    "src/20_Data.js",
+    "src/30_Check.js",
+    "src/40_DocHelpers.js",
+    "src/50_Rirekisho.js",
+    "src/60_Shokumu.js",
+    "src/70_AiReview.js",
+    "src/80_Setup.js",
+    "src/90_Menu.js"
+  ]
+}

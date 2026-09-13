@@ -34,3 +34,8 @@ Notion の最新コンテンツを `content/*.json` と `public/images/` に取�
 - `scripts/fetch-content.mts` — ビルド前に Notion からコンテンツ取得。
   Notion がホストする画像は URL が失効するためビルド時にダウンロードして同梱する
 - `.github/workflows/deploy.yml` — push / 毎日定時 / 手動ボタンでビルド & デプロイ
+
+## 履歴書・職務経歴書ジェネレーター
+
+`gas/resume-kit/` に Google Apps Script 版の履歴書・職務経歴書ジェネレーターがあります（社用 PC など Workspace のみの環境向け）。
+展開手順と使い方は [gas/resume-kit/README.md](gas/resume-kit/README.md)。
