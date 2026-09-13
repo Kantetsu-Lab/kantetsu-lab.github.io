@@ -1,7 +1,7 @@
 /*
  * Kantetsu Lab 履歴書・職務経歴書ジェネレーター（Google Apps Script）
  * このファイルは gas/resume-kit/src/*.js から自動生成されています。直接編集せず src を直して `node gas/resume-kit/bundle.mjs` を実行してください。
- * generated: 2026-09-13T11:27:16.613Z
+ * generated: 2026-09-13T21:51:58.094Z
  */
 // ===== 00_Config.js =====
 /**
@@ -59,13 +59,17 @@ KL.TEXT_KEYS = [
 ];
 
 KL.SETTING_KEYS = [
-  ['出力フォルダID', '', '空欄ならこのスプレッドシートと同じ場所に「履歴書_出力」フォルダを自動作成'],
-  ['履歴書フォント', 'Noto Serif JP', 'Google ドキュメントで使えるフォント名'],
+  ['出力フォルダ', '', '保存先フォルダの URL / ID / 名前。空欄なら生成時に毎回選択（前回の選択を記憶）'],
+  ['ファイル名パターン', '{氏名}様_{種別}', '使えるトークン: {氏名} {種別} {日付}  例: {氏名}様_{種別} → 田中 太郎様_履歴書'],
+  ['履歴書テンプレート', '', '会社規定の用紙を使う場合、Google ドキュメント / スプレッドシート / Word / Excel の URL か ID。空欄なら標準レイアウト'],
+  ['職務経歴書テンプレート', '', '同上'],
+  ['履歴書フォント', 'Noto Serif JP', '標準レイアウトで使うフォント名'],
   ['職務経歴書フォント', 'Noto Sans JP', ''],
-  ['ファイル名の接頭辞', '', '例: KL_ → KL_履歴書_田中太郎_20260913'],
   ['PDFも出力', 'はい', 'はい / いいえ'],
-  ['AIモデル', 'claude-opus-5', 'AI添削で使う Claude のモデルID'],
-  ['AI思考の深さ', 'medium', 'low / medium / high（高いほど時間がかかる。GAS の通信制限内に収めるなら medium 推奨）']
+  ['AIプロバイダ', 'gemini', 'gemini / claude'],
+  ['Geminiモデル', 'gemini-2.5-pro', 'Gemini API のモデル名'],
+  ['Claudeモデル', 'claude-opus-5', 'Claude API のモデルID'],
+  ['AI思考の深さ', 'medium', 'Claude 用: low / medium / high（高いほど時間がかかる。GAS の通信制限内に収めるなら medium 推奨）']
 ];
 
 // 表形式シートの見出し
@@ -137,6 +141,37 @@ KL.REVIEW_RULES = [
   '7. 表記: 会社名は正式名称、資格は正式名称、半角数字、「貴社」表記、敬体・常体の混在なし。',
   '8. 出力形式: (a) 総評3行 (b) 重大な修正（事実・整合性）(c) 改善提案（優先度順、修正前→修正後の文例つき）(d) 面接で突っ込まれそうな点 の4部構成。日本語で。'
 ];
+
+// ---- テンプレート（会社規定の用紙）用トークン
+// 単一値トークン: {{氏名}} のように用紙に書いておくと置換される
+KL.TOKENS_SINGLE = [
+  ['氏名', '氏名'], ['ふりがな', 'ふりがな（氏名）'], ['生年月日', '1997年5月10日 の形式'], ['生年月日_年', ''], ['生年月日_月', ''], ['生年月日_日', ''],
+  ['年齢', '満年齢（数字のみ）'], ['性別', ''], ['郵便番号', ''], ['現住所', ''], ['現住所ふりがな', ''], ['電話', ''], ['携帯', ''], ['メール', ''],
+  ['連絡先', '未入力なら「同上」'], ['連絡先ふりがな', ''], ['作成日', '2026年9月13日 の形式'], ['作成日_年', ''], ['作成日_月', ''], ['作成日_日', ''],
+  ['通勤時間', ''], ['扶養家族数', ''], ['配偶者', ''], ['配偶者の扶養義務', ''], ['志望動機', '志望の動機・特技・アピールポイント'], ['本人希望', '本人希望記入欄'],
+  ['写真', 'ドキュメントのみ: 写真ファイルIDの画像を挿入'],
+  ['職務要約', ''], ['自己PR', ''], ['経験能力', '活かせる経験・能力（複数段落）'], ['職務経歴詳細', '会社・プロジェクト詳細をテキストで'],
+  ['実績', '表彰・登壇（1行1件）'], ['資格一覧', '免許・資格（1行1件）']
+];
+// 行リストトークン: 用紙の 1 行（ドキュメントは表の行、スプレッドシートは開始行）に置くと、行数分展開される
+KL.TOKENS_LIST = {
+  '学歴職歴': { cols: ['年', '月', '内容'], note: '学歴と職歴を 1 つの表に（履歴書標準）' },
+  '学歴': { cols: ['年', '月', '内容'], note: '学歴のみ' },
+  '職歴': { cols: ['年', '月', '内容'], note: '職歴のみ' },
+  '資格': { cols: ['年', '月', '内容'], note: '免許・資格（履歴書に載せる○のみ）' },
+  '所属企業': { cols: ['期間', '会社名', '雇用形態'], note: '職務経歴書の所属企業一覧' }
+};
+// 用紙のラベル → トークン（トークン自動挿入の手掛かり）。前方一致・空白無視
+KL.LABEL_TO_TOKEN = [
+  ['氏名', '{{氏名}}'], ['ふりがな', '{{ふりがな}}'], ['フリガナ', '{{ふりがな}}'], ['生年月日', '{{生年月日}}'], ['性別', '{{性別}}'],
+  ['現住所', '{{現住所}}'], ['住所', '{{現住所}}'], ['電話', '{{電話}}'], ['TEL', '{{電話}}'], ['携帯', '{{携帯}}'], ['メール', '{{メール}}'], ['E-mail', '{{メール}}'], ['Email', '{{メール}}'],
+  ['連絡先', '{{連絡先}}'], ['通勤時間', '{{通勤時間}}'], ['扶養家族', '{{扶養家族数}}'], ['配偶者の扶養義務', '{{配偶者の扶養義務}}'], ['配偶者', '{{配偶者}}'],
+  ['志望の動機', '{{志望動機}}'], ['志望動機', '{{志望動機}}'], ['本人希望', '{{本人希望}}'], ['職務要約', '{{職務要約}}'], ['職務概要', '{{職務要約}}'], ['自己PR', '{{自己PR}}'],
+  ['活かせる経験', '{{経験能力}}'], ['職務経歴', '{{職務経歴詳細}}'], ['免許・資格', '{{資格_内容}}'], ['資格', '{{資格_内容}}'], ['学歴・職歴', '{{学歴職歴_内容}}'], ['学歴', '{{学歴_内容}}'], ['職歴', '{{職歴_内容}}']
+];
+
+// AI の system プロンプト
+KL.AI_SYSTEM = 'あなたは日本の転職市場に精通したキャリアアドバイザーです。事実（社名・年月・数値）を創作せず、指示された形式で日本語で回答してください。';
 
 
 // ===== 10_Util.js =====
@@ -726,12 +761,60 @@ function addSectionHeading_(body, text, font) {
   return p;
 }
 
-/** 出力フォルダ（設定 or スプレッドシートと同じ場所に自動作成） */
-function getOutputFolder_(ss, settings) {
-  var id = nz_(settings['出力フォルダID']);
+/** URL / ID / 名前 からフォルダを解決。名前は「マイドライブ直下 → 全体検索」の順。無ければ null */
+function resolveFolder_(spec) {
+  spec = nz_(spec);
+  if (!spec) return null;
+  var id = extractDriveId_(spec);
   if (id) {
-    try { return DriveApp.getFolderById(id); } catch (e) { /* fallthrough */ }
+    try { return DriveApp.getFolderById(id); } catch (e) { /* not a folder id */ }
   }
+  var it = DriveApp.getRootFolder().getFoldersByName(spec);
+  if (it.hasNext()) return it.next();
+  it = DriveApp.getFoldersByName(spec);
+  if (it.hasNext()) return it.next();
+  return null;
+}
+
+/** Drive の URL / ID から ID を取り出す */
+function extractDriveId_(s) {
+  s = nz_(s);
+  var m = s.match(/[-\w]{25,}/);
+  return m ? m[0] : '';
+}
+
+/** 保存先フォルダを決める。設定 → 前回の選択（ユーザープロパティ）→ ダイアログ の順 */
+function chooseOutputFolder_(ss, settings, ui) {
+  var configured = resolveFolder_(settings['出力フォルダ']);
+  if (configured) return configured;
+  var props = PropertiesService.getUserProperties();
+  var last = props.getProperty('LAST_OUTPUT_FOLDER_ID');
+  var lastFolder = null;
+  if (last) { try { lastFolder = DriveApp.getFolderById(last); } catch (e) { lastFolder = null; } }
+  if (!ui) return lastFolder || getDefaultOutputFolder_(ss);
+  var res = ui.prompt('保存先フォルダ',
+    'Google ドライブのフォルダ URL / ID / フォルダ名を入力してください。\n' +
+    '存在しない名前ならマイドライブ直下に新規作成します。\n' +
+    (lastFolder ? '空欄 → 前回と同じ「' + lastFolder.getName() + '」\n' : '空欄 → このスプレッドシートと同じ場所の「履歴書_出力」\n') +
+    '（毎回聞かれたくない場合は「設定」シートの出力フォルダに入れてください）',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return null;
+  var spec = nz_(res.getResponseText());
+  var folder;
+  if (!spec) folder = lastFolder || getDefaultOutputFolder_(ss);
+  else {
+    folder = resolveFolder_(spec);
+    if (!folder) {
+      if (extractDriveId_(spec) && /^[-\w]{25,}$/.test(spec)) throw new Error('フォルダが見つかりません: ' + spec);
+      folder = DriveApp.getRootFolder().createFolder(spec);
+    }
+  }
+  props.setProperty('LAST_OUTPUT_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+/** スプレッドシートと同じ場所の「履歴書_出力」 */
+function getDefaultOutputFolder_(ss) {
   var file = DriveApp.getFileById(ss.getId());
   var parents = file.getParents();
   var parent = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
@@ -740,12 +823,11 @@ function getOutputFolder_(ss, settings) {
   return parent.createFolder('履歴書_出力');
 }
 
-/** ドキュメントをフォルダへ移動し、必要なら PDF も出す。 { doc, pdf } の URL を返す */
-function finalizeDoc_(doc, folder, settings) {
-  doc.saveAndClose();
-  var file = DriveApp.getFileById(doc.getId());
+/** 生成ファイル（ドキュメント/スプレッドシート）をフォルダへ移動し、必要なら PDF も出す */
+function finalizeFile_(fileId, url, folder, settings) {
+  var file = DriveApp.getFileById(fileId);
   file.moveTo(folder);
-  var result = { docUrl: doc.getUrl(), pdfUrl: '' };
+  var result = { docUrl: url, pdfUrl: '' };
   if (/^(はい|yes|true|1)$/i.test(nz_(settings['PDFも出力']))) {
     var blob = file.getAs('application/pdf').setName(file.getName() + '.pdf');
     var old = folder.getFilesByName(file.getName() + '.pdf');
@@ -756,9 +838,344 @@ function finalizeDoc_(doc, folder, settings) {
   return result;
 }
 
+function finalizeDoc_(doc, folder, settings) {
+  doc.saveAndClose();
+  return finalizeFile_(doc.getId(), doc.getUrl(), folder, settings);
+}
+
+/** ファイル名: 設定「ファイル名パターン」({氏名} {種別} {日付}) */
 function outputFileName_(model, kind) {
-  var prefix = nz_(model.settings['ファイル名の接頭辞']);
-  return prefix + kind + '_' + nameForFile_(model.basic['氏名']) + '_' + formatCompactDate_(model.asOf);
+  var pattern = nz_(model.settings['ファイル名パターン']) || '{氏名}様_{種別}';
+  return pattern
+    .replace(/\{氏名\}/g, nz_(model.basic['氏名']))
+    .replace(/\{種別\}/g, kind)
+    .replace(/\{日付\}/g, formatCompactDate_(model.asOf))
+    .replace(/[\\\/:*?"<>|]/g, '_');
+}
+
+
+// ===== 45_Template.js =====
+/**
+ * 会社規定の用紙（テンプレート）への流し込み。
+ *  対応: Google ドキュメント / Google スプレッドシート / Word(.docx) / Excel(.xlsx)（Word・Excel は Google 形式に変換したコピーを作る）
+ *  仕組み: 用紙に {{氏名}} などのトークンを置いておき、生成時に値へ置換する。
+ *          行リスト（{{学歴職歴_年}} {{学歴職歴_月}} {{学歴職歴_内容}}）は、ドキュメントでは表の行を複製、スプレッドシートでは下方向に展開。
+ */
+
+var MIME_ = {
+  GDOC: 'application/vnd.google-apps.document',
+  GSHEET: 'application/vnd.google-apps.spreadsheet',
+  DOCX: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  XLSX: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  DOC: 'application/msword',
+  XLS: 'application/vnd.ms-excel'
+};
+
+/** モデル → トークン値（純粋関数） */
+function buildTokenValues_(model) {
+  var b = model.basic;
+  var r = composeRirekisho_(model);
+  var s = composeShokumu_(model);
+  var single = {
+    '氏名': r.name, 'ふりがな': r.kana,
+    '生年月日': model.birth ? formatJaDate_(model.birth) : '',
+    '生年月日_年': model.birth ? String(model.birth.getFullYear()) : '',
+    '生年月日_月': model.birth ? String(model.birth.getMonth() + 1) : '',
+    '生年月日_日': model.birth ? String(model.birth.getDate()) : '',
+    '年齢': model.age === null ? '' : String(model.age),
+    '性別': r.sex, '郵便番号': r.postal, '現住所': r.address, '現住所ふりがな': r.addrKana,
+    '電話': r.tel, '携帯': r.mobile, 'メール': r.email, '連絡先': r.contact, '連絡先ふりがな': r.contactKana,
+    '作成日': formatJaDate_(model.asOf),
+    '作成日_年': String(model.asOf.getFullYear()), '作成日_月': String(model.asOf.getMonth() + 1), '作成日_日': String(model.asOf.getDate()),
+    '通勤時間': r.commute, '扶養家族数': r.dependents, '配偶者': r.spouse, '配偶者の扶養義務': r.spouseSupport,
+    '志望動機': r.motivation.join('\n'), '本人希望': r.wishes.join('\n'),
+    '職務要約': s.summary.join('\n'), '自己PR': s.pr.join('\n'),
+    '経験能力': s.skills.map(function (k) { return ['【' + k.title + '】'].concat(k.lines).join('\n'); }).join('\n\n'),
+    '職務経歴詳細': s.companies.map(function (c) {
+      var L = ['■' + c.header].concat(c.info);
+      if (c.projects.length === 0 && c.position) L.push('担当業務：' + c.position);
+      c.projects.forEach(function (p) {
+        L.push('');
+        L.push('◆' + p.name + '（' + p.period + '）');
+        if (p.role.length) L.push('役割・規模：' + p.role.join(' / '));
+        L = L.concat(p.overview);
+      });
+      return L.join('\n');
+    }).join('\n\n'),
+    '実績': s.achievementGroups.map(function (g) { return g.items.map(function (it) { return '・' + it + '（' + g.title + '）'; }).join('\n'); }).join('\n'),
+    '資格一覧': s.licenseGroups.map(function (g) { return g.items.map(function (it) { return '・' + it; }).join('\n'); }).join('\n')
+  };
+  var hist = r.historyRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text]; });
+  var eduRows = [], jobRows = [], mode = '';
+  hist.forEach(function (row) {
+    if (row[2] === '学歴') { mode = 'edu'; return; }
+    if (row[2] === '職歴') { mode = 'job'; return; }
+    if (mode === 'edu') eduRows.push(row); else if (mode === 'job') jobRows.push(row);
+  });
+  var lists = {
+    '学歴職歴': hist,
+    '学歴': eduRows,
+    '職歴': jobRows,
+    '資格': r.licenseRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text]; }),
+    '所属企業': s.jobRows
+  };
+  return { single: single, lists: lists, photoId: r.photoId };
+}
+
+function tokenRegex_(name) {
+  return '\\{\\{' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\}\\}';
+}
+
+/** 設定値（URL/ID）→ テンプレートファイル情報 */
+function resolveTemplateFile_(spec) {
+  var id = extractDriveId_(spec);
+  if (!id) throw new Error('テンプレートの URL / ID が不正です: ' + spec);
+  var file;
+  try { file = DriveApp.getFileById(id); } catch (e) { throw new Error('テンプレートが開けません（ID: ' + id + '）。共有されているか確認してください。'); }
+  return { id: id, file: file, mime: file.getMimeType(), name: file.getName() };
+}
+
+/** テンプレートを Google 形式のコピーとして出力フォルダに作る。{ id, kind: 'doc'|'sheet', url } */
+function copyTemplateAsGoogle_(tpl, name, folder) {
+  if (tpl.mime === MIME_.GDOC || tpl.mime === MIME_.GSHEET) {
+    var copy = tpl.file.makeCopy(name, folder);
+    return { id: copy.getId(), kind: tpl.mime === MIME_.GDOC ? 'doc' : 'sheet', url: copy.getUrl() };
+  }
+  var target = null;
+  if (tpl.mime === MIME_.DOCX || tpl.mime === MIME_.DOC) target = MIME_.GDOC;
+  if (tpl.mime === MIME_.XLSX || tpl.mime === MIME_.XLS) target = MIME_.GSHEET;
+  if (!target) throw new Error('このテンプレート形式（' + tpl.mime + '）には流し込めません。Word / Excel / Google ドキュメント / スプレッドシートを指定してください。PDF の場合は原本を入手してください。');
+  if (typeof Drive === 'undefined') {
+    throw new Error('Word / Excel の変換には Drive API（高度なサービス）が必要です。appsscript.json を README の内容に置き換えるか、用紙を Google ドキュメント／スプレッドシートで開いて「Google 形式で保存」し、その ID を設定してください。');
+  }
+  var created = Drive.Files.create({ name: name, mimeType: target, parents: [folder.getId()] }, tpl.file.getBlob(), { supportsAllDrives: true });
+  return { id: created.id, kind: target === MIME_.GDOC ? 'doc' : 'sheet', url: (target === MIME_.GDOC ? 'https://docs.google.com/document/d/' : 'https://docs.google.com/spreadsheets/d/') + created.id + '/edit' };
+}
+
+/** テンプレートから生成（履歴書・職務経歴書共通） */
+function buildFromTemplate_(model, kind, folder) {
+  var tpl = resolveTemplateFile_(model.settings[kind + 'テンプレート']);
+  var out = copyTemplateAsGoogle_(tpl, outputFileName_(model, kind), folder);
+  var values = buildTokenValues_(model);
+  if (out.kind === 'doc') fillDocsTemplate_(out.id, values);
+  else fillSheetsTemplate_(out.id, values);
+  return finalizeFile_(out.id, out.url, folder, model.settings);
+}
+
+// ---------------- Google ドキュメント
+
+function fillDocsTemplate_(docId, values) {
+  var doc = DocumentApp.openById(docId);
+  var body = doc.getBody();
+  var containers = [body];
+  if (doc.getHeader()) containers.push(doc.getHeader());
+  if (doc.getFooter()) containers.push(doc.getFooter());
+
+  // 行リスト
+  Object.keys(KL.TOKENS_LIST).forEach(function (name) {
+    var cols = KL.TOKENS_LIST[name].cols;
+    var entries = values.lists[name] || [];
+    var anyPattern = '\\{\\{' + name + '_(' + cols.join('|') + ')\\}\\}';
+    var found = body.findText(anyPattern);
+    if (!found) return;
+    var row = findAncestor_(found.getElement(), DocumentApp.ElementType.TABLE_ROW);
+    if (!row) {
+      // 表の外にある場合はテキストとして展開
+      var joined = entries.map(function (e) { return e.filter(function (x) { return x !== ''; }).join(' '); }).join('\n');
+      containers.forEach(function (c) { c.replaceText(anyPattern, joined); });
+      return;
+    }
+    row = row.asTableRow();
+    var table = row.getParent().asTable();
+    var idx = table.getChildIndex(row);
+    var proto = row.copy();
+    if (entries.length === 0) {
+      cols.forEach(function (c) { row.replaceText(tokenRegex_(name + '_' + c), ''); });
+      return;
+    }
+    entries.forEach(function (entry, i) {
+      var target = i === 0 ? row : table.insertTableRow(idx + i, proto.copy());
+      cols.forEach(function (c, j) { target.replaceText(tokenRegex_(name + '_' + c), entry[j] || ''); });
+    });
+  });
+
+  // 写真
+  var photo = body.findText(tokenRegex_('写真'));
+  if (photo) {
+    var para = findAncestor_(photo.getElement(), DocumentApp.ElementType.PARAGRAPH);
+    body.replaceText(tokenRegex_('写真'), '');
+    if (para && values.photoId) {
+      try {
+        var img = para.asParagraph().appendInlineImage(DriveApp.getFileById(values.photoId).getBlob());
+        img.setWidth(85).setHeight(113);
+      } catch (e) { /* 画像が読めなければ枠のまま */ }
+    }
+  }
+
+  // 単一トークン
+  Object.keys(values.single).forEach(function (k) {
+    var v = values.single[k];
+    containers.forEach(function (c) { c.replaceText(tokenRegex_(k), v); });
+  });
+  // 残ったトークンを消す
+  containers.forEach(function (c) { c.replaceText('\\{\\{[^}]*\\}\\}', ''); });
+  doc.saveAndClose();
+}
+
+function findAncestor_(el, type) {
+  var cur = el;
+  while (cur) {
+    if (cur.getType && cur.getType() === type) return cur;
+    cur = cur.getParent ? cur.getParent() : null;
+  }
+  return null;
+}
+
+// ---------------- Google スプレッドシート
+
+function fillSheetsTemplate_(ssId, values) {
+  var ss = SpreadsheetApp.openById(ssId);
+  ss.getSheets().forEach(function (sh) {
+    Object.keys(KL.TOKENS_LIST).forEach(function (name) {
+      var cols = KL.TOKENS_LIST[name].cols;
+      var entries = values.lists[name] || [];
+      cols.forEach(function (c, j) {
+        var cells = sh.createTextFinder('{{' + name + '_' + c + '}}').matchEntireCell(false).findAll();
+        cells.forEach(function (cell) {
+          var r0 = cell.getRow(), c0 = cell.getColumn();
+          if (entries.length === 0) { cell.setValue(''); return; }
+          var colValues = entries.map(function (e) { return [e[j] || '']; });
+          sh.getRange(r0, c0, colValues.length, 1).setValues(colValues);
+        });
+      });
+    });
+    Object.keys(values.single).forEach(function (k) {
+      if (k === '写真') return;
+      sh.createTextFinder('{{' + k + '}}').matchEntireCell(false).replaceAllWith(values.single[k]);
+    });
+    sh.createTextFinder('\\{\\{[^}]*\\}\\}').useRegularExpression(true).replaceAllWith('');
+  });
+  SpreadsheetApp.flush();
+}
+
+// ---------------- 診断とトークン自動挿入
+
+/** テンプレート内のトークンを列挙して分類する（純粋関数: text → 結果） */
+function classifyTokens_(text) {
+  var found = {};
+  var m, re = /\{\{([^}]+)\}\}/g;
+  while ((m = re.exec(text)) !== null) found[m[1].trim()] = true;
+  var singles = KL.TOKENS_SINGLE.map(function (t) { return t[0]; });
+  var known = [], unknown = [];
+  Object.keys(found).forEach(function (t) {
+    var isList = Object.keys(KL.TOKENS_LIST).some(function (n) {
+      return KL.TOKENS_LIST[n].cols.some(function (c) { return t === n + '_' + c; });
+    });
+    if (singles.indexOf(t) >= 0 || isList) known.push(t); else unknown.push(t);
+  });
+  var essential = ['氏名', '生年月日', '現住所'];
+  var missing = essential.filter(function (e) { return !found[e] && !found[e + '_年']; });
+  if (!Object.keys(found).some(function (t) { return /^(学歴職歴|学歴|職歴)_/.test(t); }) && !found['職務経歴詳細']) missing.push('学歴職歴_内容（または 学歴_内容 / 職歴_内容 / 職務経歴詳細）');
+  return { known: known.sort(), unknown: unknown.sort(), missing: missing };
+}
+
+function templateText_(tpl) {
+  if (tpl.mime === MIME_.GDOC) return DocumentApp.openById(tpl.id).getBody().getText();
+  if (tpl.mime === MIME_.GSHEET) {
+    return SpreadsheetApp.openById(tpl.id).getSheets().map(function (sh) {
+      return sh.getDataRange().getValues().map(function (r) { return r.join('\t'); }).join('\n');
+    }).join('\n');
+  }
+  throw new Error('診断は Google ドキュメント / スプレッドシートのみ対応です。Word / Excel は一度 Google 形式で保存してください（生成時は自動変換されます）。');
+}
+
+/** ラベル文字列 → トークン（該当なしは ''） */
+function labelToToken_(label) {
+  var s = nz_(label).replace(/[\s　※:：・()（）]/g, '');
+  if (!s || s.length > 14) return '';
+  for (var i = 0; i < KL.LABEL_TO_TOKEN.length; i++) {
+    var key = KL.LABEL_TO_TOKEN[i][0].replace(/[\s　・]/g, '');
+    if (s.indexOf(key) === 0) return KL.LABEL_TO_TOKEN[i][1];
+  }
+  return '';
+}
+
+/** リスト系トークン {{学歴職歴_内容}} → 名前 */
+function listNameOfToken_(token) {
+  var m = token.match(/^\{\{(.+)_内容\}\}$/);
+  return m ? m[1] : '';
+}
+
+/** ドキュメントの表を走査し、ラベルの右隣（リストは次の行）にトークンを書く。挿入数を返す */
+function autoInsertTokensDoc_(docId) {
+  var doc = DocumentApp.openById(docId);
+  var body = doc.getBody();
+  var count = 0;
+  var tables = body.getTables();
+  tables.forEach(function (table) {
+    var nRows = table.getNumRows();
+    for (var r = 0; r < nRows; r++) {
+      var row = table.getRow(r);
+      var nCells = row.getNumCells();
+      for (var c = 0; c < nCells; c++) {
+        var token = labelToToken_(row.getCell(c).getText());
+        if (!token) continue;
+        var listName = listNameOfToken_(token);
+        if (listName) {
+          if (r + 1 >= nRows) continue;
+          var next = table.getRow(r + 1);
+          if (nz_(next.getText()) !== '') continue;
+          var cols = KL.TOKENS_LIST[listName].cols;
+          var n = next.getNumCells();
+          // 右端をお内容、その左 2 つを年・月とみなす
+          var map = n >= 3 ? [[n - 3, 0], [n - 2, 1], [n - 1, 2]] : [[n - 1, 2]];
+          map.forEach(function (pair) { next.getCell(pair[0]).setText('{{' + listName + '_' + cols[pair[1]] + '}}'); count++; });
+          r++; // 次の行は処理済み
+        } else if (c + 1 < nCells && nz_(row.getCell(c + 1).getText()) === '') {
+          row.getCell(c + 1).setText(token); count++;
+        }
+      }
+    }
+  });
+  doc.saveAndClose();
+  return count;
+}
+
+/** スプレッドシート版。ラベルの右隣の空セル、リストは次の行 */
+function autoInsertTokensSheet_(ssId) {
+  var ss = SpreadsheetApp.openById(ssId);
+  var count = 0;
+  ss.getSheets().forEach(function (sh) {
+    var vals = sh.getDataRange().getValues();
+    for (var r = 0; r < vals.length; r++) {
+      for (var c = 0; c < vals[r].length; c++) {
+        var token = labelToToken_(vals[r][c]);
+        if (!token) continue;
+        var listName = listNameOfToken_(token);
+        if (listName) {
+          if (r + 1 >= vals.length) continue;
+          var cols = KL.TOKENS_LIST[listName].cols;
+          // 同じ行の「年」「月」列を探す。無ければラベルの 2 つ左・1 つ左
+          var yCol = -1, mCol = -1;
+          for (var k = 0; k < vals[r].length; k++) {
+            var h = nz_(vals[r][k]).replace(/\s/g, '');
+            if (h === '年' && yCol < 0) yCol = k;
+            if (h === '月' && mCol < 0) mCol = k;
+          }
+          if (yCol < 0) yCol = c - 2;
+          if (mCol < 0) mCol = c - 1;
+          if (nz_(vals[r + 1][c]) !== '') continue;
+          if (yCol >= 0) { sh.getRange(r + 2, yCol + 1).setValue('{{' + listName + '_' + cols[0] + '}}'); count++; }
+          if (mCol >= 0) { sh.getRange(r + 2, mCol + 1).setValue('{{' + listName + '_' + cols[1] + '}}'); count++; }
+          sh.getRange(r + 2, c + 1).setValue('{{' + listName + '_' + cols[2] + '}}'); count++;
+        } else if (c + 1 < vals[r].length && nz_(vals[r][c + 1]) === '') {
+          sh.getRange(r + 1, c + 2).setValue(token); count++;
+        }
+      }
+    }
+  });
+  SpreadsheetApp.flush();
+  return count;
 }
 
 
@@ -833,7 +1250,8 @@ function composeRirekisho_(model) {
   };
 }
 
-function buildRirekishoDoc_(model, ss) {
+function buildRirekishoDoc_(model, ss, folder) {
+  if (nz_(model.settings['履歴書テンプレート'])) return buildFromTemplate_(model, '履歴書', folder);
   var d = composeRirekisho_(model);
   var font = model.settings['履歴書フォント'] || 'Noto Serif JP';
   var doc = newA4Doc_(outputFileName_(model, '履歴書'), font, 10);
@@ -969,7 +1387,6 @@ function buildRirekishoDoc_(model, ss) {
   setCell_(wc, ['本人希望記入欄（特に給料・職種・勤務時間・勤務地・その他についての希望などがあれば記入）'].concat(d.wishes.length ? d.wishes : ['']), { font: font, size: 10, valign: 'top' });
   wc.getChild(0).asParagraph().editAsText().setFontSize(8).setForegroundColor('#555555');
 
-  var folder = getOutputFolder_(ss, model.settings);
   return finalizeDoc_(doc, folder, model.settings);
 }
 
@@ -1054,7 +1471,8 @@ function composeShokumu_(model) {
   };
 }
 
-function buildShokumuDoc_(model, ss) {
+function buildShokumuDoc_(model, ss, folder) {
+  if (nz_(model.settings['職務経歴書テンプレート'])) return buildFromTemplate_(model, '職務経歴書', folder);
   var d = composeShokumu_(model);
   var font = model.settings['職務経歴書フォント'] || 'Noto Sans JP';
   var doc = newA4Doc_(outputFileName_(model, '職務経歴書'), font, 10);
@@ -1155,110 +1573,175 @@ function buildShokumuDoc_(model, ss) {
 
   addPara_(body, '以上', { font: font, size: 10, align: 'right', before: 14 });
 
-  var folder = getOutputFolder_(ss, model.settings);
   return finalizeDoc_(doc, folder, model.settings);
 }
 
 
 // ===== 70_AiReview.js =====
 /**
- * AI 添削
- *  - プロンプト生成: 社内ルール＋入力内容をまとめたテキストを「AI添削」シートに出す（Gemini 等に貼って使う）
- *  - API 実行: ANTHROPIC_API_KEY（ユーザープロパティ）があれば Claude API を直接呼ぶ
+ * AI 分析・添削（Gemini API / Claude API）
+ *  - プロンプト生成: 社内ルール＋入力内容（セル番地付き）。Gemini（Workspace）にそのまま貼っても使える
+ *  - API 実行: 総評 + 「項目ごとの修正提案」を JSON で受け取り、AI提案 シートに書く
+ *  - 提案の反映: チェックを付けた行だけシートに書き戻す（事実の書き換えを AI に無断でさせない）
  */
 
-
-function buildReviewPrompt_(model) {
+/** 入力内容を「番地」付きで列挙する。番地は提案の反映先に使う */
+function buildContentDump_(model) {
   var b = model.basic;
+  var L = [];
+  L.push('作成日: ' + formatJaDate_(model.asOf) + (model.age !== null ? '（満' + model.age + '歳）' : ''));
+  L.push('');
+  L.push('## 基本情報（番地: 基本情報!項目名）');
+  ['志望の動機・特技・アピールポイント', '本人希望記入欄', 'メール', '現住所'].forEach(function (k) {
+    L.push('[基本情報!' + k + '] ' + (nz_(b[k]) || '（未入力）'));
+  });
+  L.push('');
+  L.push('## 学歴（番地: 学歴!行N!列名）');
+  model.education.forEach(function (e) { L.push('[学歴!行' + e.row + '] ' + formatYm_(e.year, e.month, '?') + ' ' + e.school + ' ' + e.kind); });
+  L.push('');
+  L.push('## 職歴（番地: 職歴!行N!列名）');
+  sortOldestFirst_(model.jobs).forEach(function (j) {
+    L.push('[職歴!行' + j.row + '] ' + formatPeriod_(j.startY, j.startM, j.endY, j.endM) + ' ' + j.company + '（雇用形態: ' + (j.employment || '未記入') + ' / 部門・職位: ' + (j.position || '未記入') + '）');
+  });
+  L.push('');
+  L.push('## 文章（番地: 文章!項目名）');
+  L.push('[文章!職務要約] ' + (model.texts.summary || '（未入力）'));
+  L.push('[文章!自己PR] ' + (model.texts.pr || '（未入力）'));
+  L.push('');
+  L.push('## 活かせる経験・能力（番地: 経験・能力!行N!本文 など。5要素は ミッション/目標数字/課題/工夫点/結果）');
+  model.skills.forEach(function (s) {
+    L.push('[経験・能力!行' + s.row + '!見出し] ' + s.title);
+    if (s.body) L.push('[経験・能力!行' + s.row + '!本文] ' + s.body);
+    else {
+      L.push('[経験・能力!行' + s.row + '!ミッション] ' + s.mission);
+      L.push('[経験・能力!行' + s.row + '!目標数字] ' + s.target);
+      L.push('[経験・能力!行' + s.row + '!課題] ' + s.issue);
+      L.push('[経験・能力!行' + s.row + '!工夫点] ' + s.ingenuity);
+      L.push('[経験・能力!行' + s.row + '!結果] ' + s.result);
+    }
+  });
+  L.push('');
+  L.push('## プロジェクト（番地: プロジェクト!行N!列名。列名は プロジェクト名/役割・規模/プロジェクト概要/支援内容（1行1項目）/成果・実績）');
+  sortNewestFirst_(model.projects).forEach(function (p) {
+    L.push('[プロジェクト!行' + p.row + '!プロジェクト名] ' + p.name + '（' + p.company + ' / ' + formatPeriod_(p.startY, p.startM, p.endY, p.endM) + '）');
+    L.push('[プロジェクト!行' + p.row + '!役割・規模] ' + p.role);
+    L.push('[プロジェクト!行' + p.row + '!プロジェクト概要] ' + p.overview);
+    L.push('[プロジェクト!行' + p.row + '!支援内容（1行1項目）] ' + p.tasks.join(' / '));
+    L.push('[プロジェクト!行' + p.row + '!成果・実績] ' + p.results);
+  });
+  L.push('');
+  L.push('## 実績（番地: 実績!行N!内容）');
+  model.achievements.forEach(function (a) { L.push('[実績!行' + a.row + '!内容] [' + a.kind + '] ' + a.text); });
+  L.push('');
+  L.push('## 免許・資格');
+  model.licenses.forEach(function (l) { L.push('[免許・資格!行' + l.row + '!名称] ' + l.name + (l.year !== null ? '（' + formatYm_(l.year, l.month) + '）' : '')); });
+  return L.join('\n');
+}
+
+/** 人が貼って使うプロンプト（自由記述の添削） */
+function buildReviewPrompt_(model) {
   var L = [];
   L.push('あなたは転職エージェントのキャリアアドバイザー兼、コンサルティングファームの採用担当です。以下の履歴書・職務経歴書の入力内容を添削してください。');
   L.push('');
   L = L.concat(KL.REVIEW_RULES);
   L.push('');
   L.push('# 入力内容');
-  L.push('作成日: ' + formatJaDate_(model.asOf) + (model.age !== null ? '（満' + model.age + '歳）' : ''));
-  L.push('');
-  L.push('## 学歴');
-  model.education.forEach(function (e) { L.push('- ' + formatYm_(e.year, e.month, '?') + ' ' + e.school + ' ' + e.kind); });
-  L.push('');
-  L.push('## 職歴');
-  sortOldestFirst_(model.jobs).forEach(function (j) {
-    L.push('- ' + formatPeriod_(j.startY, j.startM, j.endY, j.endM) + ' ' + j.company + '（' + (j.employment || '雇用形態未記入') + (j.position ? ' / ' + j.position : '') + '）');
-  });
-  L.push('');
-  L.push('## 職務要約');
-  L.push(model.texts.summary || '（未入力）');
-  L.push('');
-  L.push('## 活かせる経験・能力');
-  model.skills.forEach(function (s) {
-    L.push('### ' + s.title);
-    skillBodyLines_(s).forEach(function (x) { L.push(x); });
-  });
-  L.push('');
-  L.push('## プロジェクト詳細');
-  sortNewestFirst_(model.projects).forEach(function (p) {
-    L.push('### ' + p.name + '（' + p.company + ' / ' + formatPeriod_(p.startY, p.startM, p.endY, p.endM) + '）');
-    if (p.role) L.push('役割・規模: ' + p.role);
-    if (p.overview) L.push('概要: ' + p.overview);
-    p.tasks.forEach(function (tk) { L.push('- ' + tk); });
-    if (p.results) L.push('成果: ' + p.results);
-  });
-  L.push('');
-  L.push('## 実績');
-  model.achievements.forEach(function (a) { L.push('- [' + a.kind + '] ' + a.text); });
-  L.push('');
-  L.push('## 免許・資格');
-  model.licenses.forEach(function (l) { L.push('- ' + l.name + (l.year !== null ? '（' + formatYm_(l.year, l.month) + '）' : '')); });
-  L.push('');
-  L.push('## 志望の動機・アピールポイント（履歴書）');
-  L.push(nz_(b['志望の動機・特技・アピールポイント']) || '（未入力）');
-  L.push('');
-  L.push('## 自己PR（職務経歴書）');
-  L.push(model.texts.pr || '（未入力）');
-  L.push('');
-  L.push('## 本人希望記入欄');
-  L.push(nz_(b['本人希望記入欄']) || '（未入力）');
+  L.push(buildContentDump_(model));
   return L.join('\n');
 }
 
-/** Claude API を呼び出して添削テキストを返す */
-function callClaudeReview_(prompt, settings) {
-  var key = PropertiesService.getUserProperties().getProperty('ANTHROPIC_API_KEY');
-  if (!key) throw new Error('API キーが未設定です。メニュー「APIキーを設定」から登録してください。');
-  var model = nz_(settings['AIモデル']) || 'claude-opus-5';
+/** API 用プロンプト（JSON で総評＋提案を返させる） */
+function buildAnalysisPrompt_(model) {
+  var L = [];
+  L.push('以下の履歴書・職務経歴書の入力内容を分析し、JSON のみを返してください（前後に説明文やコードフェンスを付けない）。');
+  L.push('');
+  L = L.concat(KL.REVIEW_RULES.slice(0, KL.REVIEW_RULES.length - 1));
+  L.push('');
+  L.push('# 出力 JSON の形式');
+  L.push('{');
+  L.push('  "review": "総評（3〜6行）。次に、事実・整合性の重大な指摘、面接で突っ込まれそうな点を箇条書きで。Markdown 可",');
+  L.push('  "proposals": [');
+  L.push('    { "address": "文章!職務要約", "current": "現在の文の冒頭20字", "proposed": "修正後の全文", "reason": "なぜ良くなるか（1〜2文）", "priority": "高|中|低" }');
+  L.push('  ]');
+  L.push('}');
+  L.push('- address は入力内容に付いている [番地] をそのまま使う（例: 文章!自己PR、経験・能力!行2!本文、プロジェクト!行3!プロジェクト概要）');
+  L.push('- proposed はセルにそのまま貼れる完成文。改行は \\n。事実（社名・年月・数値）は入力に無いものを創作しない。数値が無い箇所は「【要確認: 〇〇の数値】」と穴を明示する');
+  L.push('- 提案は多くても 8 件。優先度の高い順');
+  L.push('');
+  L.push('# 入力内容');
+  L.push(buildContentDump_(model));
+  return L.join('\n');
+}
+
+// ---------------- プロバイダ
+
+function getApiKey_(provider) {
+  var name = provider === 'claude' ? 'ANTHROPIC_API_KEY' : 'GEMINI_API_KEY';
+  return PropertiesService.getUserProperties().getProperty(name);
+}
+
+/** プロンプトを投げてテキストを返す */
+function callAi_(prompt, settings, systemText) {
+  var provider = (nz_(settings['AIプロバイダ']) || 'gemini').toLowerCase();
+  if (provider === 'claude') return callClaude_(prompt, settings, systemText);
+  return callGemini_(prompt, settings, systemText);
+}
+
+function callGemini_(prompt, settings, systemText) {
+  var key = getApiKey_('gemini');
+  if (!key) throw new Error('Gemini の API キーが未設定です。メニュー「APIキーを設定」から登録してください（Google AI Studio で発行）。');
+  var model = nz_(settings['Geminiモデル']) || 'gemini-2.5-pro';
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
+  var payload = {
+    system_instruction: { parts: [{ text: systemText }] },
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
+  };
+  var res = UrlFetchApp.fetch(url, {
+    method: 'post', contentType: 'application/json',
+    headers: { 'x-goog-api-key': key },
+    payload: JSON.stringify(payload), muteHttpExceptions: true
+  });
+  var code = res.getResponseCode(), text = res.getContentText();
+  if (code !== 200) {
+    var msg = text;
+    try { msg = JSON.parse(text).error.message; } catch (e) { /* raw */ }
+    throw new Error('Gemini API エラー (' + code + '): ' + msg);
+  }
+  var json = JSON.parse(text);
+  var cand = (json.candidates || [])[0];
+  if (!cand || !cand.content) throw new Error('Gemini から回答が得られませんでした' + (json.promptFeedback ? '（' + JSON.stringify(json.promptFeedback) + '）' : '') + '。');
+  return (cand.content.parts || []).map(function (p) { return p.text || ''; }).join('');
+}
+
+function callClaude_(prompt, settings, systemText) {
+  var key = getApiKey_('claude');
+  if (!key) throw new Error('Claude の API キーが未設定です。メニュー「APIキーを設定」から登録してください。');
+  var model = nz_(settings['Claudeモデル']) || 'claude-opus-5';
   var effort = nz_(settings['AI思考の深さ']) || 'medium';
   if (['low', 'medium', 'high'].indexOf(effort) < 0) effort = 'medium';
-
   var payload = {
     model: model,
-    max_tokens: 6000,
+    max_tokens: 8000,
     fallbacks: 'default',
     output_config: { effort: effort },
-    system: 'あなたは日本の転職市場に精通したキャリアアドバイザーです。指示された形式で、具体的な修正文例を含めて日本語で回答してください。',
+    system: systemText,
     messages: [{ role: 'user', content: prompt }]
   };
   var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-beta': 'server-side-fallback-2026-07-01'
-    },
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
+    method: 'post', contentType: 'application/json',
+    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-beta': 'server-side-fallback-2026-07-01' },
+    payload: JSON.stringify(payload), muteHttpExceptions: true
   });
-  var code = res.getResponseCode();
-  var text = res.getContentText();
+  var code = res.getResponseCode(), text = res.getContentText();
   if (code !== 200) {
     var msg = text;
-    try { msg = JSON.parse(text).error.message; } catch (e) { /* keep raw */ }
+    try { msg = JSON.parse(text).error.message; } catch (e) { /* raw */ }
     throw new Error('Claude API エラー (' + code + '): ' + msg);
   }
   var json = JSON.parse(text);
   if (json.stop_reason === 'refusal') {
-    var why = json.stop_details && json.stop_details.explanation ? json.stop_details.explanation : '';
-    throw new Error('AI が回答を控えました。' + why);
+    throw new Error('AI が回答を控えました。' + (json.stop_details && json.stop_details.explanation ? json.stop_details.explanation : ''));
   }
   var out = [];
   (json.content || []).forEach(function (blk) { if (blk.type === 'text') out.push(blk.text); });
@@ -1266,7 +1749,99 @@ function callClaudeReview_(prompt, settings) {
   return out.join('\n');
 }
 
-/** 「AI添削」シートにプロンプト／結果を書き出す */
+// ---------------- 提案の解析と反映（純粋関数はテスト対象）
+
+/** AI の返答テキストから { review, proposals } を取り出す。コードフェンスや前置きに耐える */
+function parseAnalysis_(text) {
+  var s = nz_(text);
+  var fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) s = fence[1];
+  var start = s.indexOf('{'), end = s.lastIndexOf('}');
+  if (start < 0 || end < 0) return { review: nz_(text), proposals: [] };
+  var obj;
+  try { obj = JSON.parse(s.slice(start, end + 1)); } catch (e) { return { review: nz_(text), proposals: [] }; }
+  var proposals = Array.isArray(obj.proposals) ? obj.proposals : [];
+  return {
+    review: nz_(obj.review),
+    proposals: proposals.filter(function (p) { return p && nz_(p.address) && nz_(p.proposed); }).map(function (p) {
+      return { address: nz_(p.address), current: nz_(p.current), proposed: nz_(p.proposed), reason: nz_(p.reason), priority: nz_(p.priority) || '中' };
+    })
+  };
+}
+
+/** 番地 "シート!行N!列名" / "シート!項目名" を分解 */
+function parseAddress_(address) {
+  var parts = nz_(address).split('!').map(function (x) { return x.trim(); });
+  if (parts.length < 2) return null;
+  var sheet = parts[0];
+  var isKv = (sheet === KL.SHEET.BASIC || sheet === KL.SHEET.TEXTS || sheet === KL.SHEET.SETTINGS);
+  if (isKv) return { sheet: sheet, key: parts[1] };
+  var m = parts[1].match(/^行\s*(\d+)$/);
+  if (!m) return null;
+  var col = parts[2] || (sheet === KL.SHEET.ACHIEVEMENTS ? '内容' : sheet === KL.SHEET.SKILLS ? '本文' : '');
+  if (!col) return null;
+  return { sheet: sheet, row: parseInt(m[1], 10), col: col };
+}
+
+/** 番地の現在値を読む（反映前の確認用） */
+function readAtAddress_(ss, addr) {
+  var sh = ss.getSheetByName(addr.sheet);
+  if (!sh) return null;
+  if (addr.key) {
+    var rows = sh.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) if (nz_(rows[i][0]) === addr.key) return { range: sh.getRange(i + 1, 2), value: nz_(rows[i][1]) };
+    return null;
+  }
+  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(nz_);
+  var c = headers.indexOf(addr.col);
+  if (c < 0) return null;
+  var range = sh.getRange(addr.row, c + 1);
+  return { range: range, value: nz_(range.getValue()) };
+}
+
+/** AI提案 シートに書く */
+function writeProposalSheet_(ss, review, proposals) {
+  var sh = ss.getSheetByName('AI提案') || ss.insertSheet('AI提案');
+  sh.clear();
+  sh.getRange(1, 1).setValue('総評').setFontWeight('bold');
+  sh.getRange(1, 2).setValue(review || '（なし）').setWrap(true).setVerticalAlignment('top');
+  var header = ['反映', '優先度', '番地', '現在の値', '提案', '理由', '状態'];
+  sh.getRange(3, 1, 1, header.length).setValues([header]).setFontWeight('bold').setBackground('#e8eaed');
+  var rows = proposals.map(function (p) {
+    var addr = parseAddress_(p.address);
+    var cur = addr ? readAtAddress_(ss, addr) : null;
+    return [false, p.priority, p.address, cur ? cur.value : '（番地が見つかりません）', p.proposed, p.reason, cur ? '未反映' : '反映不可'];
+  });
+  if (rows.length) {
+    sh.getRange(4, 1, rows.length, header.length).setValues(rows);
+    sh.getRange(4, 1, rows.length, 1).insertCheckboxes();
+    sh.getRange(4, 4, rows.length, 3).setWrap(true).setVerticalAlignment('top');
+  }
+  sh.setColumnWidth(1, 50).setColumnWidth(2, 60).setColumnWidth(3, 200).setColumnWidth(4, 300).setColumnWidth(5, 400).setColumnWidth(6, 300).setColumnWidth(7, 80);
+  sh.setFrozenRows(3);
+  return sh;
+}
+
+/** チェックの付いた提案を各シートへ書き戻す。反映件数を返す */
+function applyProposals_(ss) {
+  var sh = ss.getSheetByName('AI提案');
+  if (!sh || sh.getLastRow() < 4) return 0;
+  var rows = sh.getRange(4, 1, sh.getLastRow() - 3, 7).getValues();
+  var applied = 0;
+  rows.forEach(function (r, i) {
+    if (r[0] !== true || nz_(r[6]) === '反映済') return;
+    var addr = parseAddress_(r[2]);
+    var cur = addr ? readAtAddress_(ss, addr) : null;
+    if (!cur) { sh.getRange(i + 4, 7).setValue('反映不可'); return; }
+    cur.range.setValue(r[4]);
+    sh.getRange(i + 4, 7).setValue('反映済');
+    sh.getRange(i + 4, 1).setValue(false);
+    applied++;
+  });
+  return applied;
+}
+
+/** 「AI添削」シートにプロンプト／結果を書き出す（貼り付け用） */
 function writeAiSheet_(ss, prompt, result) {
   var sh = ss.getSheetByName(KL.SHEET.AI) || ss.insertSheet(KL.SHEET.AI);
   sh.clear();
@@ -1278,6 +1853,7 @@ function writeAiSheet_(ss, prompt, result) {
   sh.setFrozenRows(1);
   return sh;
 }
+
 
 
 // ===== 80_Setup.js =====
@@ -1454,7 +2030,8 @@ function sampleTables_() {
  */
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu(KL.MENU_TITLE)
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu(KL.MENU_TITLE)
     .addItem('① 初期セットアップ（シート作成・サンプル投入）', 'menuSetupWithSample')
     .addItem('　 初期セットアップ（サンプルなし）', 'menuSetupEmpty')
     .addSeparator()
@@ -1464,9 +2041,15 @@ function onOpen() {
     .addItem('③ 職務経歴書を生成', 'menuBuildShokumu')
     .addItem('③ 両方を生成', 'menuBuildBoth')
     .addSeparator()
-    .addItem('④ AI添削プロンプトを作成（Gemini 等に貼る）', 'menuAiPrompt')
-    .addItem('④ AI添削を実行（Claude API）', 'menuAiReview')
-    .addItem('　 Claude APIキーを設定', 'menuSetApiKey')
+    .addSubMenu(ui.createMenu('④ AI 分析（Gemini / Claude）')
+      .addItem('分析して提案を作る', 'menuAiAnalyze')
+      .addItem('チェックした提案を反映', 'menuApplyProposals')
+      .addItem('添削プロンプトだけ作る（Gemini に貼る）', 'menuAiPrompt')
+      .addItem('APIキーを設定', 'menuSetApiKey'))
+    .addSubMenu(ui.createMenu('⑤ 会社規定の用紙（テンプレート）')
+      .addItem('テンプレートを診断', 'menuDiagnoseTemplate')
+      .addItem('用紙にトークンを自動挿入（コピーを作成）', 'menuAutoInsertTokens')
+      .addItem('トークン一覧を表示', 'menuTokenList'))
     .addSeparator()
     .addItem('使い方', 'menuHelp')
     .addToUi();
@@ -1539,27 +2122,29 @@ function menuBuildBoth() { buildAndNotify_(true, true); }
 
 function buildAndNotify_(doRireki, doShokumu) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
   var model = loadModel(ss);
   if (!guardErrors_(ss, model)) return;
-  var msg = [];
+  var folder = chooseOutputFolder_(ss, model.settings, ui);
+  if (!folder) return;
+  var msg = ['保存先: ' + folder.getName() + '\n' + folder.getUrl()];
   if (doRireki) {
-    var r = buildRirekishoDoc_(model, ss);
+    var r = buildRirekishoDoc_(model, ss, folder);
     msg.push('履歴書:\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : ''));
   }
   if (doShokumu) {
-    var s = buildShokumuDoc_(model, ss);
+    var s = buildShokumuDoc_(model, ss, folder);
     msg.push('職務経歴書:\n' + s.docUrl + (s.pdfUrl ? '\nPDF: ' + s.pdfUrl : ''));
   }
-  var folder = getOutputFolder_(ss, model.settings);
-  msg.push('出力先フォルダ:\n' + folder.getUrl());
-  SpreadsheetApp.getUi().alert('生成完了', msg.join('\n\n'), SpreadsheetApp.getUi().ButtonSet.OK);
+  ui.alert('生成完了', msg.join('\n\n'), ui.ButtonSet.OK);
 }
+
+// ---------------- AI
 
 function menuAiPrompt() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var model = loadModel(ss);
-  var prompt = buildReviewPrompt_(model);
-  var sh = writeAiSheet_(ss, prompt, '');
+  var sh = writeAiSheet_(ss, buildReviewPrompt_(model), '');
   ss.setActiveSheet(sh);
   SpreadsheetApp.getUi().alert('プロンプトを作成しました',
     '「AI添削」シートの A2 セルをコピーして、Gemini（Workspace）や Claude に貼り付けてください。\n' +
@@ -1567,48 +2152,135 @@ function menuAiPrompt() {
     SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
-function menuAiReview() {
+function menuAiAnalyze() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var model = loadModel(ss);
-  var prompt = buildReviewPrompt_(model);
   var ui = SpreadsheetApp.getUi();
+  var model = loadModel(ss);
+  var prompt = buildAnalysisPrompt_(model);
   try {
-    var result = callClaudeReview_(prompt, model.settings);
-    var sh = writeAiSheet_(ss, prompt, result);
+    var raw = callAi_(prompt, model.settings, KL.AI_SYSTEM);
+    var parsed = parseAnalysis_(raw);
+    var sh = writeProposalSheet_(ss, parsed.review, parsed.proposals);
+    writeAiSheet_(ss, buildReviewPrompt_(model), raw);
     ss.setActiveSheet(sh);
-    ui.alert('AI添削 完了', '「AI添削」シートの B2 セルに結果を書き出しました。', ui.ButtonSet.OK);
+    ui.alert('AI 分析 完了',
+      '「AI提案」シートに総評と ' + parsed.proposals.length + ' 件の修正提案を書き出しました。\n' +
+      '内容を確認し、採用する行の「反映」にチェックを付けて「チェックした提案を反映」を実行してください。\n' +
+      '※ 事実（社名・年月・数値）は必ず自分で確認してください。',
+      ui.ButtonSet.OK);
   } catch (e) {
-    writeAiSheet_(ss, prompt, '');
-    ui.alert('AI添削 失敗', String(e.message || e) + '\n\n外部APIが使えない環境では「AI添削プロンプトを作成」を使い、Gemini に貼り付けてください。', ui.ButtonSet.OK);
+    writeAiSheet_(ss, buildReviewPrompt_(model), '');
+    ui.alert('AI 分析 失敗', String(e.message || e) + '\n\n外部 API が使えない環境では「添削プロンプトだけ作る」を使い、Gemini に貼り付けてください。', ui.ButtonSet.OK);
   }
+}
+
+function menuApplyProposals() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var n = applyProposals_(ss);
+  SpreadsheetApp.getUi().alert('反映完了', n + ' 件をシートに反映しました。「② 入力チェック」→「③ 生成」で確認してください。', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 function menuSetApiKey() {
   var ui = SpreadsheetApp.getUi();
-  var res = ui.prompt('Claude APIキーを設定',
-    'sk-ant- で始まるキーを貼り付けてください（このアカウントのユーザープロパティに保存され、他の共有者には見えません）。\n空欄で OK を押すと削除します。',
+  var which = ui.alert('APIキーを設定', 'Gemini のキーを設定しますか？\n（「いいえ」で Claude のキー）', ui.ButtonSet.YES_NO_CANCEL);
+  if (which === ui.Button.CANCEL || which === ui.Button.CLOSE) return;
+  var provider = which === ui.Button.YES ? 'gemini' : 'claude';
+  var propName = provider === 'gemini' ? 'GEMINI_API_KEY' : 'ANTHROPIC_API_KEY';
+  var res = ui.prompt((provider === 'gemini' ? 'Gemini' : 'Claude') + ' APIキー',
+    (provider === 'gemini' ? 'Google AI Studio で発行したキー' : 'sk-ant- で始まるキー') +
+    'を貼り付けてください（このアカウントのユーザープロパティに保存され、共有者には見えません）。\n空欄で OK を押すと削除します。',
     ui.ButtonSet.OK_CANCEL);
   if (res.getSelectedButton() !== ui.Button.OK) return;
   var key = nz_(res.getResponseText());
   var props = PropertiesService.getUserProperties();
-  if (key) { props.setProperty('ANTHROPIC_API_KEY', key); ui.alert('保存しました。'); }
-  else { props.deleteProperty('ANTHROPIC_API_KEY'); ui.alert('削除しました。'); }
+  if (key) { props.setProperty(propName, key); ui.alert('保存しました。「設定」シートの AIプロバイダ を ' + provider + ' にしてください。'); }
+  else { props.deleteProperty(propName); ui.alert('削除しました。'); }
+}
+
+// ---------------- テンプレート
+
+function askTemplateSpec_(ui, settings) {
+  var res = ui.prompt('テンプレート',
+    '用紙（Google ドキュメント / スプレッドシート）の URL か ID を入力してください。\n' +
+    '空欄 → 「設定」シートの 履歴書テンプレート を使用',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return '';
+  return nz_(res.getResponseText()) || nz_(settings['履歴書テンプレート']) || nz_(settings['職務経歴書テンプレート']);
+}
+
+function menuDiagnoseTemplate() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var model = loadModel(ss);
+  var spec = askTemplateSpec_(ui, model.settings);
+  if (!spec) return;
+  try {
+    var tpl = resolveTemplateFile_(spec);
+    var r = classifyTokens_(templateText_(tpl));
+    ui.alert('テンプレート診断: ' + tpl.name,
+      '認識したトークン (' + r.known.length + '): ' + (r.known.join(', ') || 'なし') + '\n\n' +
+      '不明なトークン (' + r.unknown.length + '): ' + (r.unknown.join(', ') || 'なし') + '\n\n' +
+      (r.missing.length ? '不足している主要トークン: ' + r.missing.join(', ') + '\n\nトークンが無い用紙なら「用紙にトークンを自動挿入」を試してください。' : '主要トークンは揃っています。「設定」シートにこの用紙の ID を入れて生成してください。'),
+      ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('診断できません', String(e.message || e), ui.ButtonSet.OK);
+  }
+}
+
+function menuAutoInsertTokens() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var model = loadModel(ss);
+  var spec = askTemplateSpec_(ui, model.settings);
+  if (!spec) return;
+  try {
+    var tpl = resolveTemplateFile_(spec);
+    var folder = chooseOutputFolder_(ss, model.settings, null);
+    var out = copyTemplateAsGoogle_(tpl, tpl.name.replace(/\.(docx?|xlsx?)$/i, '') + '_トークン入り', folder);
+    var n = out.kind === 'doc' ? autoInsertTokensDoc_(out.id) : autoInsertTokensSheet_(out.id);
+    var r = classifyTokens_(templateText_({ id: out.id, mime: out.kind === 'doc' ? MIME_.GDOC : MIME_.GSHEET }));
+    ui.alert('トークンを挿入しました（' + n + ' 箇所）',
+      'コピーを作成しました:\n' + out.url + '\n\n' +
+      '開いて、{{...}} の位置が正しいか確認・修正してください（ラベルの右隣／次の行に入れています）。\n' +
+      (r.missing.length ? '自動で入れられなかった主要トークン: ' + r.missing.join(', ') + '\n手で追記してください。\n\n' : '') +
+      '確認できたら「設定」シートの 履歴書テンプレート／職務経歴書テンプレート にこの URL を入れてください。',
+      ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('自動挿入できません', String(e.message || e), ui.ButtonSet.OK);
+  }
+}
+
+function menuTokenList() {
+  var L = ['用紙に書くトークン（{{ }} 付き）', ''];
+  L.push('【単一値】');
+  KL.TOKENS_SINGLE.forEach(function (t) { L.push('{{' + t[0] + '}}' + (t[1] ? '　' + t[1] : '')); });
+  L.push('');
+  L.push('【行リスト】表の 1 行（スプレッドシートは開始セル）に置くと行数分展開');
+  Object.keys(KL.TOKENS_LIST).forEach(function (n) {
+    L.push(KL.TOKENS_LIST[n].cols.map(function (c) { return '{{' + n + '_' + c + '}}'; }).join(' ') + '　' + KL.TOKENS_LIST[n].note);
+  });
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('トークン一覧') || ss.insertSheet('トークン一覧');
+  sh.clear();
+  sh.getRange(1, 1, L.length, 1).setValues(L.map(function (x) { return [x]; }));
+  sh.setColumnWidth(1, 700);
+  ss.setActiveSheet(sh);
 }
 
 function menuHelp() {
   SpreadsheetApp.getUi().alert('使い方 (v' + KL.VERSION + ')',
     '【流れ】\n' +
-    '① 初期セットアップ → ② 各シートに入力 → ② 入力チェック → ③ 生成 → ④ AI添削 → 直して再生成\n\n' +
+    '① 初期セットアップ → ② 各シートに入力 → ② 入力チェック → ③ 生成 → ④ AI 分析で提案を反映 → 再生成\n\n' +
     '【シート】\n' +
     '基本情報: 履歴書の氏名・住所など\n' +
-    '学歴 / 職歴: 履歴書と職務経歴書の両方に使う。年は西暦4桁\n' +
+    '学歴 / 職歴: 両方の書類に使う。年は西暦4桁\n' +
     'プロジェクト: 職務経歴書の詳細。会社名は職歴と完全一致\n' +
     '経験・能力: 本文を書くか、5要素（ミッション→目標数字→課題→工夫点→結果）を埋める\n' +
-    '免許・資格: 「履歴書に載せる」に ○ で履歴書にも出す\n' +
-    '文章: 職務要約・自己PR\n' +
-    '設定: 出力先・フォント・PDF・AIモデル\n\n' +
+    '免許・資格 / 実績 / 文章（職務要約・自己PR）\n' +
+    '設定: 保存先・ファイル名パターン・テンプレート・PDF・AI\n\n' +
     '【出力】\n' +
-    'Google ドキュメント（編集可）と PDF を出力フォルダに保存します。写真は「写真ファイルID」を入れると自動挿入、無ければ枠のみ。\n\n' +
+    '生成時に保存先フォルダを聞きます（設定に書けば省略）。ファイル名は「氏名様_履歴書」形式。\n' +
+    '会社規定の用紙がある場合は ⑤ でトークンを入れた用紙を作り、設定にその URL を入れると、その用紙に流し込みます。\n\n' +
     '【注意】\n' +
     'このスプレッドシートには個人情報が入ります。共有設定に注意し、GitHub 等に実データを置かないでください。',
     SpreadsheetApp.getUi().ButtonSet.OK);

@@ -31,7 +31,8 @@ node gas/resume-kit/test/run-tests.mjs   # 純粋ロジックのテスト
 node gas/resume-kit/bundle.mjs           # dist/resume-kit.gs 再生成（必ずコミットに含める）
 ```
 
-- 構成: `00_Config`（定数・シート定義・添削ルール）→ `10_Util`（純粋関数）→ `20_Data`（シート→モデル）→ `30_Check` → `40_DocHelpers` → `50_Rirekisho` / `60_Shokumu`（compose = 純粋、render = DocumentApp）→ `70_AiReview` → `80_Setup` → `90_Menu`
+- 構成: `00_Config`（定数・シート定義・添削ルール・テンプレートトークン）→ `10_Util`（純粋関数）→ `20_Data`（シート→モデル）→ `30_Check` → `40_DocHelpers`（保存先選択・ファイル名・PDF）→ `45_Template`（会社規定の用紙への流し込み・診断・トークン自動挿入）→ `50_Rirekisho` / `60_Shokumu`（compose = 純粋、render = DocumentApp）→ `70_AiReview`（Gemini/Claude、提案 JSON、反映）→ `80_Setup` → `90_Menu`
+- グローバル `KL.*` への代入は `00_Config` にだけ書く（GAS のファイル読み込み順に依存しないため）
 - 新しい入力項目を足すときは `00_Config` の KEYS/HEADERS/NOTES → `20_Data` → compose → render → テスト の順
 - GAS の実行はローカルでできない。DocumentApp を触ったら「実機で ③ 両方を生成 して確認」を報告に含める
 - 実データ（本人の氏名・住所・電話）をリポジトリに書かない。サンプルは架空人物のみ

@@ -77,7 +77,8 @@ function composeShokumu_(model) {
   };
 }
 
-function buildShokumuDoc_(model, ss) {
+function buildShokumuDoc_(model, ss, folder) {
+  if (nz_(model.settings['職務経歴書テンプレート'])) return buildFromTemplate_(model, '職務経歴書', folder);
   var d = composeShokumu_(model);
   var font = model.settings['職務経歴書フォント'] || 'Noto Sans JP';
   var doc = newA4Doc_(outputFileName_(model, '職務経歴書'), font, 10);
@@ -178,6 +179,5 @@ function buildShokumuDoc_(model, ss) {
 
   addPara_(body, '以上', { font: font, size: 10, align: 'right', before: 14 });
 
-  var folder = getOutputFolder_(ss, model.settings);
   return finalizeDoc_(doc, folder, model.settings);
 }

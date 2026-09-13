@@ -111,12 +111,60 @@ function addSectionHeading_(body, text, font) {
   return p;
 }
 
-/** 出力フォルダ（設定 or スプレッドシートと同じ場所に自動作成） */
-function getOutputFolder_(ss, settings) {
-  var id = nz_(settings['出力フォルダID']);
+/** URL / ID / 名前 からフォルダを解決。名前は「マイドライブ直下 → 全体検索」の順。無ければ null */
+function resolveFolder_(spec) {
+  spec = nz_(spec);
+  if (!spec) return null;
+  var id = extractDriveId_(spec);
   if (id) {
-    try { return DriveApp.getFolderById(id); } catch (e) { /* fallthrough */ }
+    try { return DriveApp.getFolderById(id); } catch (e) { /* not a folder id */ }
   }
+  var it = DriveApp.getRootFolder().getFoldersByName(spec);
+  if (it.hasNext()) return it.next();
+  it = DriveApp.getFoldersByName(spec);
+  if (it.hasNext()) return it.next();
+  return null;
+}
+
+/** Drive の URL / ID から ID を取り出す */
+function extractDriveId_(s) {
+  s = nz_(s);
+  var m = s.match(/[-\w]{25,}/);
+  return m ? m[0] : '';
+}
+
+/** 保存先フォルダを決める。設定 → 前回の選択（ユーザープロパティ）→ ダイアログ の順 */
+function chooseOutputFolder_(ss, settings, ui) {
+  var configured = resolveFolder_(settings['出力フォルダ']);
+  if (configured) return configured;
+  var props = PropertiesService.getUserProperties();
+  var last = props.getProperty('LAST_OUTPUT_FOLDER_ID');
+  var lastFolder = null;
+  if (last) { try { lastFolder = DriveApp.getFolderById(last); } catch (e) { lastFolder = null; } }
+  if (!ui) return lastFolder || getDefaultOutputFolder_(ss);
+  var res = ui.prompt('保存先フォルダ',
+    'Google ドライブのフォルダ URL / ID / フォルダ名を入力してください。\n' +
+    '存在しない名前ならマイドライブ直下に新規作成します。\n' +
+    (lastFolder ? '空欄 → 前回と同じ「' + lastFolder.getName() + '」\n' : '空欄 → このスプレッドシートと同じ場所の「履歴書_出力」\n') +
+    '（毎回聞かれたくない場合は「設定」シートの出力フォルダに入れてください）',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return null;
+  var spec = nz_(res.getResponseText());
+  var folder;
+  if (!spec) folder = lastFolder || getDefaultOutputFolder_(ss);
+  else {
+    folder = resolveFolder_(spec);
+    if (!folder) {
+      if (extractDriveId_(spec) && /^[-\w]{25,}$/.test(spec)) throw new Error('フォルダが見つかりません: ' + spec);
+      folder = DriveApp.getRootFolder().createFolder(spec);
+    }
+  }
+  props.setProperty('LAST_OUTPUT_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+/** スプレッドシートと同じ場所の「履歴書_出力」 */
+function getDefaultOutputFolder_(ss) {
   var file = DriveApp.getFileById(ss.getId());
   var parents = file.getParents();
   var parent = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
@@ -125,12 +173,11 @@ function getOutputFolder_(ss, settings) {
   return parent.createFolder('履歴書_出力');
 }
 
-/** ドキュメントをフォルダへ移動し、必要なら PDF も出す。 { doc, pdf } の URL を返す */
-function finalizeDoc_(doc, folder, settings) {
-  doc.saveAndClose();
-  var file = DriveApp.getFileById(doc.getId());
+/** 生成ファイル（ドキュメント/スプレッドシート）をフォルダへ移動し、必要なら PDF も出す */
+function finalizeFile_(fileId, url, folder, settings) {
+  var file = DriveApp.getFileById(fileId);
   file.moveTo(folder);
-  var result = { docUrl: doc.getUrl(), pdfUrl: '' };
+  var result = { docUrl: url, pdfUrl: '' };
   if (/^(はい|yes|true|1)$/i.test(nz_(settings['PDFも出力']))) {
     var blob = file.getAs('application/pdf').setName(file.getName() + '.pdf');
     var old = folder.getFilesByName(file.getName() + '.pdf');
@@ -141,7 +188,17 @@ function finalizeDoc_(doc, folder, settings) {
   return result;
 }
 
+function finalizeDoc_(doc, folder, settings) {
+  doc.saveAndClose();
+  return finalizeFile_(doc.getId(), doc.getUrl(), folder, settings);
+}
+
+/** ファイル名: 設定「ファイル名パターン」({氏名} {種別} {日付}) */
 function outputFileName_(model, kind) {
-  var prefix = nz_(model.settings['ファイル名の接頭辞']);
-  return prefix + kind + '_' + nameForFile_(model.basic['氏名']) + '_' + formatCompactDate_(model.asOf);
+  var pattern = nz_(model.settings['ファイル名パターン']) || '{氏名}様_{種別}';
+  return pattern
+    .replace(/\{氏名\}/g, nz_(model.basic['氏名']))
+    .replace(/\{種別\}/g, kind)
+    .replace(/\{日付\}/g, formatCompactDate_(model.asOf))
+    .replace(/[\\\/:*?"<>|]/g, '_');
 }

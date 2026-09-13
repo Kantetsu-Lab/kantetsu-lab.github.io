@@ -151,7 +151,66 @@ test('AI添削プロンプトに社内ルールと入力が含まれる', () => 
   const p = ctx.buildReviewPrompt_(ctx.loadModel(makeSS()));
   assert.ok(p.includes('再現性'));
   assert.ok(p.includes('株式会社サンプル薬局'));
-  assert.ok(p.includes('## 自己PR'));
+  assert.ok(p.includes('[文章!自己PR]'));
+});
+
+console.log('template / ai');
+test('ファイル名パターン', () => {
+  const model = ctx.loadModel(makeSS());
+  assert.equal(ctx.outputFileName_(model, '履歴書'), '田中 太郎様_履歴書');
+  model.settings['ファイル名パターン'] = '{日付}_{氏名}_{種別}';
+  assert.match(ctx.outputFileName_(model, '職務経歴書'), /^\d{8}_田中 太郎_職務経歴書$/);
+});
+test('extractDriveId: URL / ID', () => {
+  assert.equal(ctx.extractDriveId_('https://docs.google.com/document/d/1AbC_dEf-GhIjKlMnOpQrStUvWxYz0123456/edit'), '1AbC_dEf-GhIjKlMnOpQrStUvWxYz0123456');
+  assert.equal(ctx.extractDriveId_('履歴書_出力'), '');
+});
+test('トークン値: 単一値と行リスト', () => {
+  const v = ctx.buildTokenValues_(ctx.loadModel(makeSS()));
+  assert.equal(v.single['氏名'], '田中 太郎');
+  assert.equal(v.single['生年月日'], '1997年5月10日');
+  assert.equal(v.single['連絡先'], '同上');
+  assert.ok(v.single['職務経歴詳細'].includes('◆社内AI推進・業務改善プロジェクト'));
+  assert.equal(v.lists['学歴職歴'][0][2], '学歴');
+  assert.equal(v.lists['学歴'].length, 3);
+  assert.equal(v.lists['職歴'].slice(-2)[0][2], '現在に至る');
+  assert.equal(v.lists['資格'].length, 3);
+  assert.equal(v.lists['所属企業'][0][1], '株式会社サンプル薬局');
+  assert.ok(!v.lists['学歴職歴'].some((r) => r[2] === ''), '空行パディングは除外');
+});
+test('classifyTokens: 認識 / 不明 / 不足', () => {
+  const r = ctx.classifyTokens_('{{氏名}} {{学歴職歴_年}} {{学歴職歴_内容}} {{ナゾ}}');
+  assert.equal([...r.known].sort().join(','), ['学歴職歴_内容', '学歴職歴_年', '氏名'].sort().join(','));
+  assert.equal(r.unknown[0], 'ナゾ');
+  assert.ok(r.missing.includes('生年月日'));
+  const ok = ctx.classifyTokens_('{{氏名}} {{生年月日}} {{現住所}} {{職歴_内容}}');
+  assert.equal(ok.missing.length, 0);
+});
+test('labelToToken: 用紙ラベルの推定', () => {
+  assert.equal(ctx.labelToToken_('ふりがな'), '{{ふりがな}}');
+  assert.equal(ctx.labelToToken_('氏　名'), '{{氏名}}');
+  assert.equal(ctx.labelToToken_('現住所　〒'), '{{現住所}}');
+  assert.equal(ctx.labelToToken_('学歴・職歴（各別にまとめて書く）'), '{{学歴職歴_内容}}');
+  assert.equal(ctx.labelToToken_('免許・資格'), '{{資格_内容}}');
+  assert.equal(ctx.labelToToken_('配偶者の扶養義務'), '{{配偶者の扶養義務}}');
+  assert.equal(ctx.labelToToken_('2016'), '');
+  assert.equal(ctx.listNameOfToken_('{{学歴職歴_内容}}'), '学歴職歴');
+});
+test('parseAnalysis: コードフェンス付き JSON と壊れた応答', () => {
+  const p = ctx.parseAnalysis_('前置き\n```json\n{"review":"総評","proposals":[{"address":"文章!職務要約","proposed":"新しい要約","reason":"r","priority":"高"},{"address":"","proposed":"x"}]}\n```');
+  assert.equal(p.review, '総評');
+  assert.equal(p.proposals.length, 1);
+  assert.equal(p.proposals[0].address, '文章!職務要約');
+  const bad = ctx.parseAnalysis_('JSON ではない返答');
+  assert.equal(bad.proposals.length, 0);
+  assert.equal(bad.review, 'JSON ではない返答');
+});
+test('parseAddress: 番地の分解', () => {
+  assert.deepEqual({ ...ctx.parseAddress_('文章!職務要約') }, { sheet: '文章', key: '職務要約' });
+  assert.deepEqual({ ...ctx.parseAddress_('経験・能力!行2!本文') }, { sheet: '経験・能力', row: 2, col: '本文' });
+  assert.deepEqual({ ...ctx.parseAddress_('実績!行3') }, { sheet: '実績', row: 3, col: '内容' });
+  assert.equal(ctx.parseAddress_('プロジェクト!行x!概要'), null);
+  assert.equal(ctx.parseAddress_('なんとなく'), null);
 });
 
 console.log(`\n${passed} tests passed`);

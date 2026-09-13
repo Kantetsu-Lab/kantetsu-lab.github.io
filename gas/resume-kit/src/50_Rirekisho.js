@@ -68,7 +68,8 @@ function composeRirekisho_(model) {
   };
 }
 
-function buildRirekishoDoc_(model, ss) {
+function buildRirekishoDoc_(model, ss, folder) {
+  if (nz_(model.settings['履歴書テンプレート'])) return buildFromTemplate_(model, '履歴書', folder);
   var d = composeRirekisho_(model);
   var font = model.settings['履歴書フォント'] || 'Noto Serif JP';
   var doc = newA4Doc_(outputFileName_(model, '履歴書'), font, 10);
@@ -204,6 +205,5 @@ function buildRirekishoDoc_(model, ss) {
   setCell_(wc, ['本人希望記入欄（特に給料・職種・勤務時間・勤務地・その他についての希望などがあれば記入）'].concat(d.wishes.length ? d.wishes : ['']), { font: font, size: 10, valign: 'top' });
   wc.getChild(0).asParagraph().editAsText().setFontSize(8).setForegroundColor('#555555');
 
-  var folder = getOutputFolder_(ss, model.settings);
   return finalizeDoc_(doc, folder, model.settings);
 }
