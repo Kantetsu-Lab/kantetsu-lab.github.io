@@ -113,6 +113,7 @@ function buildSuisenDoc_(model, ss, folder, tpl) {
   addPara_(body, '敬具', { font: font, size: 10.5, align: 'right' });
   addPara_(body, '添付：履歴書、職務経歴書', { font: font, size: 9.5, before: 8, color: '#555555' });
 
+  addCompanyFooter_(doc, model.settings, font);
   return finalizeDoc_(doc, folder, model.settings);
 }
 

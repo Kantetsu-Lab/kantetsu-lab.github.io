@@ -218,13 +218,61 @@ function finalizeFile_(fileId, url, folder, settings) {
   file.moveTo(folder);
   var result = { docUrl: url, pdfUrl: '' };
   if (/^(はい|yes|true|1)$/i.test(nz_(settings['PDFも出力']))) {
-    var blob = file.getAs('application/pdf').setName(file.getName() + '.pdf');
+    var blob = (file.getMimeType() === MIME_.GSHEET ? exportSheetPdf_(fileId) : file.getAs('application/pdf')).setName(file.getName() + '.pdf');
     var old = folder.getFilesByName(file.getName() + '.pdf');
     while (old.hasNext()) old.next().setTrashed(true);
     var pdf = folder.createFile(blob);
     result.pdfUrl = pdf.getUrl();
   }
   return result;
+}
+
+/**
+ * スプレッドシートを PDF に（A4・幅に合わせる・枠線なし）。
+ * getAs は既定の印刷設定（縦・枠線あり）になるため、書き出し URL で向きと倍率を指定する。
+ * 向きは最初のシートの使用範囲の縦横比で決める。
+ */
+function exportSheetPdf_(ssId) {
+  var sh = SpreadsheetApp.openById(ssId).getSheets()[0];
+  var cols = Math.max(sh.getLastColumn(), 1), rows = Math.max(sh.getLastRow(), 1);
+  var w = 0, h = 0;
+  for (var c = 1; c <= cols; c++) w += sh.getColumnWidth(c);
+  for (var r = 1; r <= rows; r++) h += sh.getRowHeight(r);
+  var portrait = pdfPortrait_(w, h);
+  var url = 'https://docs.google.com/spreadsheets/d/' + ssId + '/export?format=pdf&size=A4&portrait=' + portrait +
+    '&fitw=true&gridlines=false&printtitle=false&sheetnames=false&pagenum=UNDEFINED&fzr=false' +
+    '&top_margin=0.4&bottom_margin=0.4&left_margin=0.4&right_margin=0.4&gid=' + sh.getSheetId();
+  var res = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('PDF の書き出しに失敗しました (' + res.getResponseCode() + ')');
+  return res.getBlob();
+}
+
+/** 使用範囲の縦横比 → 縦向きか（純粋関数）。横長なら横向き */
+function pdfPortrait_(width, height) {
+  return !(width > height * 1.05);
+}
+
+/** 会社フッター（設定「会社フッター」「会社ロゴファイルID」）を入れる */
+function addCompanyFooter_(doc, settings, font) {
+  var lines = lines_(settings['会社フッター']);
+  var logoId = extractDriveId_(settings['会社ロゴファイルID']);
+  if (!lines.length && !logoId) return;
+  var footer = doc.getFooter() || doc.addFooter();
+  var first = footer.getNumChildren() ? footer.getChild(0).asParagraph() : footer.appendParagraph('');
+  lines.forEach(function (l, i) {
+    var p = i === 0 ? first : footer.appendParagraph('');
+    p.setText(l);
+    styleParagraph_(p, { font: font, size: 8, color: '#777777' });
+  });
+  if (logoId) {
+    try {
+      var lp = lines.length ? footer.appendParagraph('') : first;
+      styleParagraph_(lp, { align: 'right' });
+      var img = lp.appendInlineImage(DriveApp.getFileById(logoId).getBlob());
+      var w = img.getWidth(), h = img.getHeight();
+      if (h > 0) img.setHeight(36).setWidth(Math.round(w * 36 / h));
+    } catch (e) { /* ロゴが読めなければ文字だけ */ }
+  }
 }
 
 function finalizeDoc_(doc, folder, settings) {

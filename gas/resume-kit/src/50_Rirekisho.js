@@ -7,34 +7,37 @@
 function composeRirekisho_(model) {
   var b = model.basic;
   var rows = [];
-  var blank = { y: '', m: '', text: '', align: 'left' };
+  var blank = { y: '', m: '', text: '', align: 'left', name: '', kind: '' };
 
-  rows.push({ y: '', m: '', text: '学歴', align: 'center' });
+  rows.push({ y: '', m: '', text: '学歴', align: 'center', name: '学歴', kind: '' });
   model.education.slice().sort(function (a, c) { return (ymKey_(a.year, a.month) || 0) - (ymKey_(c.year, c.month) || 0); })
     .forEach(function (e) {
-      rows.push({ y: e.year === null ? '' : String(e.year), m: e.month === null ? '' : String(e.month), text: (e.school + ' ' + e.kind).trim(), align: 'left' });
+      rows.push({ y: e.year === null ? '' : String(e.year), m: e.month === null ? '' : String(e.month), text: (e.school + ' ' + e.kind).trim(), align: 'left', name: e.school, kind: e.kind });
     });
   rows.push(blank);
-  rows.push({ y: '', m: '', text: '職歴', align: 'center' });
+  rows.push({ y: '', m: '', text: '職歴', align: 'center', name: '職歴', kind: '' });
   var jobs = sortOldestFirst_(model.jobs);
   var hasCurrent = false;
   jobs.forEach(function (j) {
-    var joinText = j.company + ' ' + (j.employment && j.employment !== '正社員' ? j.employment + 'として入社' : '入社');
-    rows.push({ y: j.startY === null ? '' : String(j.startY), m: j.startM === null ? '' : String(j.startM), text: joinText, align: 'left' });
+    var joinKind = j.employment && j.employment !== '正社員' ? j.employment + 'として入社' : '入社';
+    rows.push({ y: j.startY === null ? '' : String(j.startY), m: j.startM === null ? '' : String(j.startM), text: j.company + ' ' + joinKind, align: 'left', name: j.company, kind: joinKind });
     if (j.endY !== null) {
-      rows.push({ y: String(j.endY), m: String(j.endM), text: j.company + ' ' + (j.leaveReason || '一身上の都合により退社'), align: 'left' });
+      rows.push({ y: String(j.endY), m: String(j.endM), text: j.company + ' ' + (j.leaveReason || '一身上の都合により退社'), align: 'left', name: j.company, kind: j.leaveReason || '退職' });
     } else {
       hasCurrent = true;
     }
   });
-  if (jobs.length === 0) rows.push({ y: '', m: '', text: 'なし', align: 'left' });
-  if (hasCurrent) rows.push({ y: '', m: '', text: '現在に至る', align: 'left' });
-  rows.push({ y: '', m: '', text: '以上', align: 'right' });
+  if (jobs.length === 0) rows.push({ y: '', m: '', text: 'なし', align: 'left', name: 'なし', kind: '' });
+  if (hasCurrent) rows.push({ y: '', m: '', text: '現在に至る', align: 'left', name: '現在に至る', kind: '' });
+  rows.push({ y: '', m: '', text: '以上', align: 'right', name: '', kind: '以上' });
   while (rows.length < KL.MIN_HISTORY_ROWS) rows.push(blank);
 
   var lic = model.licenses.filter(function (l) { return l.onRirekisho; })
     .sort(function (a, c) { return (ymKey_(a.year, a.month) || 0) - (ymKey_(c.year, c.month) || 0); })
-    .map(function (l) { return { y: l.year === null ? '' : String(l.year), m: l.month === null ? '' : String(l.month), text: withAcquired_(l.name), align: 'left' }; });
+    .map(function (l) {
+      var full = withAcquired_(l.name);
+      return { y: l.year === null ? '' : String(l.year), m: l.month === null ? '' : String(l.month), text: full, align: 'left', name: l.name, kind: full === l.name ? '' : '取得' };
+    });
   if (lic.length === 0) lic.push({ y: '', m: '', text: '特になし', align: 'left' });
   while (lic.length < KL.MIN_LICENSE_ROWS) lic.push(blank);
 

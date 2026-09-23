@@ -118,7 +118,7 @@ function buildAndNotify_(kinds) {
     var msg = ['保存先: ' + folder.getName() + '\n' + folder.getUrl()];
     kinds.forEach(function (k) {
       var r = builders[k](model, ss, folder, chosen[k]);
-      msg.push(k + ':\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : ''));
+      msg.push(k + ':\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : '') + ((r.warnings || []).length ? '\n⚠ ' + r.warnings.join('\n⚠ ') : ''));
     });
     ui.alert('生成完了', msg.join('\n\n'), ui.ButtonSet.OK);
   } catch (e) {

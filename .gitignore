@@ -43,3 +43,8 @@ next-env.d.ts
 # Google Apps Script (clasp)
 .clasp.json
 .clasprc.json
+
+# 会社版（社名入り）の設定は公開リポジトリに載せない。見本（_example）だけ追跡する
+/gas/resume-kit/companies/*
+!/gas/resume-kit/companies/_example/
+/gas/resume-kit/dist/resume-kit-*.gs

@@ -66,7 +66,7 @@ function buildTokenValues_(model) {
     return '＜' + g.title + '＞\n' + g.items.map(function (it) { return '・' + it; }).join('\n');
   })).filter(function (x) { return x; }).join('\n\n');
   var companies = s.companies.map(function (c) { return companyTokenMap_(c); });
-  var hist = r.historyRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text]; });
+  var hist = r.historyRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text, row.name, row.kind]; });
   var eduRows = [], jobRows = [], mode = '';
   hist.forEach(function (row) {
     if (row[2] === '学歴') { mode = 'edu'; return; }
@@ -77,7 +77,7 @@ function buildTokenValues_(model) {
     '学歴職歴': hist,
     '学歴': eduRows,
     '職歴': jobRows,
-    '資格': r.licenseRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text]; }),
+    '資格': r.licenseRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text, row.name, row.kind]; }),
     '所属企業': s.jobRows
   };
   return { single: single, lists: lists, photoId: r.photoId, companies: companies };
@@ -154,12 +154,15 @@ function buildFromTemplate_(model, kind, folder, chosen) {
   var tpl = resolveTemplateFile_(chosen ? chosen.spec : model.settings[kind + 'テンプレート']);
   var out = copyTemplateAsGoogle_(tpl, outputFileName_(model, kind), folder);
   var values = buildTokenValues_(model);
+  var warnings = [];
   if (out.kind === 'doc') fillDocsTemplate_(out.id, values);
   else {
     if (chosen && chosen.sheetName) keepOnlySheet_(out.id, chosen.sheetName);
-    fillSheetsTemplate_(out.id, values);
+    warnings = fillSheetsTemplate_(out.id, values) || [];
   }
-  return finalizeFile_(out.id, out.url, folder, model.settings);
+  var res = finalizeFile_(out.id, out.url, folder, model.settings);
+  res.warnings = warnings;
+  return res;
 }
 
 // ---------------- Google ドキュメント
@@ -402,6 +405,7 @@ function fillCompanyBlocksSheet_(sh, companies) {
 
 function fillSheetsTemplate_(ssId, values) {
   var ss = SpreadsheetApp.openById(ssId);
+  var warnings = {};
   ss.getSheets().forEach(function (sh) {
     Object.keys(KL.TOKENS_LIST).forEach(function (name) {
       var cols = KL.TOKENS_LIST[name].cols;
@@ -409,10 +413,12 @@ function fillSheetsTemplate_(ssId, values) {
       cols.forEach(function (c, j) {
         var cells = sh.createTextFinder('{{' + name + '_' + c + '}}').matchEntireCell(false).findAll();
         if (cells.length === 0) return;
-        cells.sort(function (x, y) { return x.getRow() - y.getRow() || x.getColumn() - y.getColumn(); });
+        // 左の表 → 右の表（見開きの用紙で続きが右にある場合）の順に、各表の中は上から
+        cells.sort(function (x, y) { return x.getColumn() - y.getColumn() || x.getRow() - y.getRow(); });
         var colValues = entries.map(function (e) { return e[j] || ''; });
         var plan = planSheetListWrites_(cells.map(function (x) { return [x.getRow(), x.getColumn()]; }), colValues);
         plan.forEach(function (w) { sh.getRange(w[0], w[1]).setValue(w[2]); });
+        if (plan.overflow) warnings[name] = Math.max(warnings[name] || 0, plan.overflow);
       });
     });
     // 会社枠 → 単一トークン（既定値付きも）をセルごとに置き換え
@@ -426,6 +432,7 @@ function fillSheetsTemplate_(ssId, values) {
     });
   });
   SpreadsheetApp.flush();
+  return Object.keys(warnings).map(function (k) { return k + ' の欄が ' + warnings[k] + ' 行足りません（書ききれなかった分は出力していません）'; });
 }
 
 /**
@@ -435,15 +442,16 @@ function fillSheetsTemplate_(ssId, values) {
  */
 function planSheetListWrites_(slots, values) {
   var out = [];
+  out.overflow = 0;
   if (slots.length === 0) return out;
   if (slots.length === 1) {
     if (values.length === 0) return [[slots[0][0], slots[0][1], '']];
     values.forEach(function (v, i) { out.push([slots[0][0] + i, slots[0][1], v]); });
     return out;
   }
+  // 固定欄（罫線の行数が決まった用紙）: 欄の外には書かない。足りない件数は overflow で返す
   slots.forEach(function (s, i) { out.push([s[0], s[1], i < values.length ? values[i] : '']); });
-  var last = slots[slots.length - 1];
-  for (var k = slots.length; k < values.length; k++) out.push([last[0] + (k - slots.length) + 1, last[1], values[k]]);
+  out.overflow = Math.max(values.length - slots.length, 0);
   return out;
 }
 

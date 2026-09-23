@@ -188,5 +188,6 @@ function buildShokumuDoc_(model, ss, folder, tpl) {
 
   addPara_(body, '以上', { font: font, size: 10, align: 'right', before: 14 });
 
+  addCompanyFooter_(doc, model.settings, font);
   return finalizeDoc_(doc, folder, model.settings);
 }

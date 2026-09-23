@@ -1,7 +1,7 @@
 /*
- * Kantetsu Lab 履歴書・職務経歴書ジェネレーター（Google Apps Script）
- * このファイルは gas/resume-kit/src/*.js から自動生成されています。直接編集せず src を直して `node gas/resume-kit/bundle.mjs` を実行してください。
- * generated: 2026-09-23T03:04:31.876Z
+ * 履歴書・職務経歴書・推薦書ジェネレーター（Google Apps Script）
+ * このファイルは src/*.js から自動生成されています。直接編集しないでください。
+ * generated: 2026-09-23T03:37:32.402Z
  */
 // ===== 00_Config.js =====
 /**
@@ -79,6 +79,8 @@ KL.SETTING_KEYS = [
   ['氏名様フォルダーを作る', 'はい', 'はい → 選んだ保存先の中に「{氏名}様」フォルダーを作って保存 / いいえ → 選んだフォルダーに直接保存'],
   ['候補者フォルダー名', '{氏名}様', '使えるトークン: {氏名} {日付}'],
   ['添付フォルダ', '', '添付資料の保存先（新規作成・添付時に自動で入る）'],
+  ['会社フッター', '', '職務経歴書・推薦書（標準レイアウト）のフッターに入れる文字。1行ごとに改行。例: 社名 / 許可番号'],
+  ['会社ロゴファイルID', '', 'フッターに入れるロゴ画像（ドライブのファイル URL / ID）。空欄なら入れない'],
   ['Gemini抽出モデル', 'gemini-2.5-flash', '添付資料の読み取りに使う Gemini モデル（大量の資料を速く読むため flash 推奨）']
 ];
 
@@ -213,10 +215,11 @@ KL.TOKENS_COMPANY = [
 KL.TOKENS_ONCE = ['{{電話}}', '{{携帯}}', '{{メール}}', '{{郵便番号}}', '{{現住所}}', '{{ふりがな}}', '{{現住所ふりがな}}', '{{連絡先}}', '{{連絡先ふりがな}}'];
 // 行リストトークン: 用紙の 1 行（ドキュメントは表の行、スプレッドシートは開始行）に置くと、行数分展開される
 KL.TOKENS_LIST = {
-  '学歴職歴': { cols: ['年', '月', '内容'], note: '学歴と職歴を 1 つの表に（履歴書標準）' },
-  '学歴': { cols: ['年', '月', '内容'], note: '学歴のみ' },
-  '職歴': { cols: ['年', '月', '内容'], note: '職歴のみ' },
-  '資格': { cols: ['年', '月', '内容'], note: '免許・資格（履歴書に載せる○のみ）' },
+  // 内容 = 「学校名 卒業」のような 1 文。名称と区分を別の欄に書く用紙は 名称 / 区分 を使う（区分: 入学・卒業・入社・退職・取得など）
+  '学歴職歴': { cols: ['年', '月', '内容', '名称', '区分'], note: '学歴と職歴を 1 つの表に（履歴書標準）' },
+  '学歴': { cols: ['年', '月', '内容', '名称', '区分'], note: '学歴のみ' },
+  '職歴': { cols: ['年', '月', '内容', '名称', '区分'], note: '職歴のみ' },
+  '資格': { cols: ['年', '月', '内容', '名称', '区分'], note: '免許・資格（履歴書に載せる○のみ）' },
   '所属企業': { cols: ['期間', '会社名', '雇用形態'], note: '職務経歴書の所属企業一覧' }
 };
 // 用紙のラベル → トークン（トークン自動挿入の手掛かり）。前方一致・空白無視
@@ -245,6 +248,12 @@ KL.PARAGRAPH_ALIASES = { '{{資格_内容}}': '{{資格一覧}}' };
 
 // テンプレート台帳の見出し
 KL.TEMPLATE_HEADERS = ['種別', '名前', 'URL / ID', 'シート名', '既定'];
+
+/** 会社版（社名入り）の設定上書き用: キー配列の既定値を変える */
+function setKeyDefault_(keys, name, value) {
+  for (var i = 0; i < keys.length; i++) if (keys[i][0] === name) { keys[i][1] = value; return; }
+  keys.push([name, value, '']);
+}
 
 
 // ===== 10_Util.js =====
@@ -958,13 +967,61 @@ function finalizeFile_(fileId, url, folder, settings) {
   file.moveTo(folder);
   var result = { docUrl: url, pdfUrl: '' };
   if (/^(はい|yes|true|1)$/i.test(nz_(settings['PDFも出力']))) {
-    var blob = file.getAs('application/pdf').setName(file.getName() + '.pdf');
+    var blob = (file.getMimeType() === MIME_.GSHEET ? exportSheetPdf_(fileId) : file.getAs('application/pdf')).setName(file.getName() + '.pdf');
     var old = folder.getFilesByName(file.getName() + '.pdf');
     while (old.hasNext()) old.next().setTrashed(true);
     var pdf = folder.createFile(blob);
     result.pdfUrl = pdf.getUrl();
   }
   return result;
+}
+
+/**
+ * スプレッドシートを PDF に（A4・幅に合わせる・枠線なし）。
+ * getAs は既定の印刷設定（縦・枠線あり）になるため、書き出し URL で向きと倍率を指定する。
+ * 向きは最初のシートの使用範囲の縦横比で決める。
+ */
+function exportSheetPdf_(ssId) {
+  var sh = SpreadsheetApp.openById(ssId).getSheets()[0];
+  var cols = Math.max(sh.getLastColumn(), 1), rows = Math.max(sh.getLastRow(), 1);
+  var w = 0, h = 0;
+  for (var c = 1; c <= cols; c++) w += sh.getColumnWidth(c);
+  for (var r = 1; r <= rows; r++) h += sh.getRowHeight(r);
+  var portrait = pdfPortrait_(w, h);
+  var url = 'https://docs.google.com/spreadsheets/d/' + ssId + '/export?format=pdf&size=A4&portrait=' + portrait +
+    '&fitw=true&gridlines=false&printtitle=false&sheetnames=false&pagenum=UNDEFINED&fzr=false' +
+    '&top_margin=0.4&bottom_margin=0.4&left_margin=0.4&right_margin=0.4&gid=' + sh.getSheetId();
+  var res = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('PDF の書き出しに失敗しました (' + res.getResponseCode() + ')');
+  return res.getBlob();
+}
+
+/** 使用範囲の縦横比 → 縦向きか（純粋関数）。横長なら横向き */
+function pdfPortrait_(width, height) {
+  return !(width > height * 1.05);
+}
+
+/** 会社フッター（設定「会社フッター」「会社ロゴファイルID」）を入れる */
+function addCompanyFooter_(doc, settings, font) {
+  var lines = lines_(settings['会社フッター']);
+  var logoId = extractDriveId_(settings['会社ロゴファイルID']);
+  if (!lines.length && !logoId) return;
+  var footer = doc.getFooter() || doc.addFooter();
+  var first = footer.getNumChildren() ? footer.getChild(0).asParagraph() : footer.appendParagraph('');
+  lines.forEach(function (l, i) {
+    var p = i === 0 ? first : footer.appendParagraph('');
+    p.setText(l);
+    styleParagraph_(p, { font: font, size: 8, color: '#777777' });
+  });
+  if (logoId) {
+    try {
+      var lp = lines.length ? footer.appendParagraph('') : first;
+      styleParagraph_(lp, { align: 'right' });
+      var img = lp.appendInlineImage(DriveApp.getFileById(logoId).getBlob());
+      var w = img.getWidth(), h = img.getHeight();
+      if (h > 0) img.setHeight(36).setWidth(Math.round(w * 36 / h));
+    } catch (e) { /* ロゴが読めなければ文字だけ */ }
+  }
 }
 
 function finalizeDoc_(doc, folder, settings) {
@@ -1054,7 +1111,7 @@ function buildTokenValues_(model) {
     return '＜' + g.title + '＞\n' + g.items.map(function (it) { return '・' + it; }).join('\n');
   })).filter(function (x) { return x; }).join('\n\n');
   var companies = s.companies.map(function (c) { return companyTokenMap_(c); });
-  var hist = r.historyRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text]; });
+  var hist = r.historyRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text, row.name, row.kind]; });
   var eduRows = [], jobRows = [], mode = '';
   hist.forEach(function (row) {
     if (row[2] === '学歴') { mode = 'edu'; return; }
@@ -1065,7 +1122,7 @@ function buildTokenValues_(model) {
     '学歴職歴': hist,
     '学歴': eduRows,
     '職歴': jobRows,
-    '資格': r.licenseRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text]; }),
+    '資格': r.licenseRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text, row.name, row.kind]; }),
     '所属企業': s.jobRows
   };
   return { single: single, lists: lists, photoId: r.photoId, companies: companies };
@@ -1142,12 +1199,15 @@ function buildFromTemplate_(model, kind, folder, chosen) {
   var tpl = resolveTemplateFile_(chosen ? chosen.spec : model.settings[kind + 'テンプレート']);
   var out = copyTemplateAsGoogle_(tpl, outputFileName_(model, kind), folder);
   var values = buildTokenValues_(model);
+  var warnings = [];
   if (out.kind === 'doc') fillDocsTemplate_(out.id, values);
   else {
     if (chosen && chosen.sheetName) keepOnlySheet_(out.id, chosen.sheetName);
-    fillSheetsTemplate_(out.id, values);
+    warnings = fillSheetsTemplate_(out.id, values) || [];
   }
-  return finalizeFile_(out.id, out.url, folder, model.settings);
+  var res = finalizeFile_(out.id, out.url, folder, model.settings);
+  res.warnings = warnings;
+  return res;
 }
 
 // ---------------- Google ドキュメント
@@ -1390,6 +1450,7 @@ function fillCompanyBlocksSheet_(sh, companies) {
 
 function fillSheetsTemplate_(ssId, values) {
   var ss = SpreadsheetApp.openById(ssId);
+  var warnings = {};
   ss.getSheets().forEach(function (sh) {
     Object.keys(KL.TOKENS_LIST).forEach(function (name) {
       var cols = KL.TOKENS_LIST[name].cols;
@@ -1397,10 +1458,12 @@ function fillSheetsTemplate_(ssId, values) {
       cols.forEach(function (c, j) {
         var cells = sh.createTextFinder('{{' + name + '_' + c + '}}').matchEntireCell(false).findAll();
         if (cells.length === 0) return;
-        cells.sort(function (x, y) { return x.getRow() - y.getRow() || x.getColumn() - y.getColumn(); });
+        // 左の表 → 右の表（見開きの用紙で続きが右にある場合）の順に、各表の中は上から
+        cells.sort(function (x, y) { return x.getColumn() - y.getColumn() || x.getRow() - y.getRow(); });
         var colValues = entries.map(function (e) { return e[j] || ''; });
         var plan = planSheetListWrites_(cells.map(function (x) { return [x.getRow(), x.getColumn()]; }), colValues);
         plan.forEach(function (w) { sh.getRange(w[0], w[1]).setValue(w[2]); });
+        if (plan.overflow) warnings[name] = Math.max(warnings[name] || 0, plan.overflow);
       });
     });
     // 会社枠 → 単一トークン（既定値付きも）をセルごとに置き換え
@@ -1414,6 +1477,7 @@ function fillSheetsTemplate_(ssId, values) {
     });
   });
   SpreadsheetApp.flush();
+  return Object.keys(warnings).map(function (k) { return k + ' の欄が ' + warnings[k] + ' 行足りません（書ききれなかった分は出力していません）'; });
 }
 
 /**
@@ -1423,15 +1487,16 @@ function fillSheetsTemplate_(ssId, values) {
  */
 function planSheetListWrites_(slots, values) {
   var out = [];
+  out.overflow = 0;
   if (slots.length === 0) return out;
   if (slots.length === 1) {
     if (values.length === 0) return [[slots[0][0], slots[0][1], '']];
     values.forEach(function (v, i) { out.push([slots[0][0] + i, slots[0][1], v]); });
     return out;
   }
+  // 固定欄（罫線の行数が決まった用紙）: 欄の外には書かない。足りない件数は overflow で返す
   slots.forEach(function (s, i) { out.push([s[0], s[1], i < values.length ? values[i] : '']); });
-  var last = slots[slots.length - 1];
-  for (var k = slots.length; k < values.length; k++) out.push([last[0] + (k - slots.length) + 1, last[1], values[k]]);
+  out.overflow = Math.max(values.length - slots.length, 0);
   return out;
 }
 
@@ -2316,34 +2381,37 @@ function chooseTemplate_(ss, kind, ui) {
 function composeRirekisho_(model) {
   var b = model.basic;
   var rows = [];
-  var blank = { y: '', m: '', text: '', align: 'left' };
+  var blank = { y: '', m: '', text: '', align: 'left', name: '', kind: '' };
 
-  rows.push({ y: '', m: '', text: '学歴', align: 'center' });
+  rows.push({ y: '', m: '', text: '学歴', align: 'center', name: '学歴', kind: '' });
   model.education.slice().sort(function (a, c) { return (ymKey_(a.year, a.month) || 0) - (ymKey_(c.year, c.month) || 0); })
     .forEach(function (e) {
-      rows.push({ y: e.year === null ? '' : String(e.year), m: e.month === null ? '' : String(e.month), text: (e.school + ' ' + e.kind).trim(), align: 'left' });
+      rows.push({ y: e.year === null ? '' : String(e.year), m: e.month === null ? '' : String(e.month), text: (e.school + ' ' + e.kind).trim(), align: 'left', name: e.school, kind: e.kind });
     });
   rows.push(blank);
-  rows.push({ y: '', m: '', text: '職歴', align: 'center' });
+  rows.push({ y: '', m: '', text: '職歴', align: 'center', name: '職歴', kind: '' });
   var jobs = sortOldestFirst_(model.jobs);
   var hasCurrent = false;
   jobs.forEach(function (j) {
-    var joinText = j.company + ' ' + (j.employment && j.employment !== '正社員' ? j.employment + 'として入社' : '入社');
-    rows.push({ y: j.startY === null ? '' : String(j.startY), m: j.startM === null ? '' : String(j.startM), text: joinText, align: 'left' });
+    var joinKind = j.employment && j.employment !== '正社員' ? j.employment + 'として入社' : '入社';
+    rows.push({ y: j.startY === null ? '' : String(j.startY), m: j.startM === null ? '' : String(j.startM), text: j.company + ' ' + joinKind, align: 'left', name: j.company, kind: joinKind });
     if (j.endY !== null) {
-      rows.push({ y: String(j.endY), m: String(j.endM), text: j.company + ' ' + (j.leaveReason || '一身上の都合により退社'), align: 'left' });
+      rows.push({ y: String(j.endY), m: String(j.endM), text: j.company + ' ' + (j.leaveReason || '一身上の都合により退社'), align: 'left', name: j.company, kind: j.leaveReason || '退職' });
     } else {
       hasCurrent = true;
     }
   });
-  if (jobs.length === 0) rows.push({ y: '', m: '', text: 'なし', align: 'left' });
-  if (hasCurrent) rows.push({ y: '', m: '', text: '現在に至る', align: 'left' });
-  rows.push({ y: '', m: '', text: '以上', align: 'right' });
+  if (jobs.length === 0) rows.push({ y: '', m: '', text: 'なし', align: 'left', name: 'なし', kind: '' });
+  if (hasCurrent) rows.push({ y: '', m: '', text: '現在に至る', align: 'left', name: '現在に至る', kind: '' });
+  rows.push({ y: '', m: '', text: '以上', align: 'right', name: '', kind: '以上' });
   while (rows.length < KL.MIN_HISTORY_ROWS) rows.push(blank);
 
   var lic = model.licenses.filter(function (l) { return l.onRirekisho; })
     .sort(function (a, c) { return (ymKey_(a.year, a.month) || 0) - (ymKey_(c.year, c.month) || 0); })
-    .map(function (l) { return { y: l.year === null ? '' : String(l.year), m: l.month === null ? '' : String(l.month), text: withAcquired_(l.name), align: 'left' }; });
+    .map(function (l) {
+      var full = withAcquired_(l.name);
+      return { y: l.year === null ? '' : String(l.year), m: l.month === null ? '' : String(l.month), text: full, align: 'left', name: l.name, kind: full === l.name ? '' : '取得' };
+    });
   if (lic.length === 0) lic.push({ y: '', m: '', text: '特になし', align: 'left' });
   while (lic.length < KL.MIN_LICENSE_ROWS) lic.push(blank);
 
@@ -2638,6 +2706,7 @@ function buildSuisenDoc_(model, ss, folder, tpl) {
   addPara_(body, '敬具', { font: font, size: 10.5, align: 'right' });
   addPara_(body, '添付：履歴書、職務経歴書', { font: font, size: 9.5, before: 8, color: '#555555' });
 
+  addCompanyFooter_(doc, model.settings, font);
   return finalizeDoc_(doc, folder, model.settings);
 }
 
@@ -2868,6 +2937,7 @@ function buildShokumuDoc_(model, ss, folder, tpl) {
 
   addPara_(body, '以上', { font: font, size: 10, align: 'right', before: 14 });
 
+  addCompanyFooter_(doc, model.settings, font);
   return finalizeDoc_(doc, folder, model.settings);
 }
 
@@ -3496,7 +3566,7 @@ function buildAndNotify_(kinds) {
     var msg = ['保存先: ' + folder.getName() + '\n' + folder.getUrl()];
     kinds.forEach(function (k) {
       var r = builders[k](model, ss, folder, chosen[k]);
-      msg.push(k + ':\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : ''));
+      msg.push(k + ':\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : '') + ((r.warnings || []).length ? '\n⚠ ' + r.warnings.join('\n⚠ ') : ''));
     });
     ui.alert('生成完了', msg.join('\n\n'), ui.ButtonSet.OK);
   } catch (e) {

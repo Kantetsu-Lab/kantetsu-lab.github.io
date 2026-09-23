@@ -57,7 +57,7 @@ class Para extends El {
     };
     return chain(txt, ['setFontFamily', 'setBold', 'setForegroundColor']);
   }
-  appendInlineImage() { this.images++; return chain({}, ['setWidth', 'setHeight']); }
+  appendInlineImage() { this.images++; const img = chain({}, ['setWidth', 'setHeight']); img.getWidth = () => 300; img.getHeight = () => 100; return img; }
 }
 
 class Cell extends El {
@@ -151,7 +151,12 @@ export function createGas() {
   }
   function cloneDoc(d) { return { ...d, body: cloneEl(d.body) }; }
   function docApi(d) {
-    return { getBody: () => d.body, getId: () => d.id, getUrl: () => 'https://docs.google.com/document/d/' + d.id + '/edit', getHeader: () => null, getFooter: () => null, saveAndClose: () => { d.closed = true; } };
+    return {
+      getBody: () => d.body, getId: () => d.id, getUrl: () => 'https://docs.google.com/document/d/' + d.id + '/edit',
+      getHeader: () => null, getFooter: () => d.footer || null,
+      addFooter: () => { if (!d.footer) { d.footer = new El('FOOTER_SECTION'); d.footer._add(new Para('')); } return d.footer; },
+      saveAndClose: () => { d.closed = true; },
+    };
   }
   const DocumentApp = {
     ElementType: T,
@@ -196,6 +201,9 @@ export function createGas() {
   function sheetApi(sh) {
     const api = {
       getName: () => sh.name,
+      getSheetId: () => sh.sheetId || (sh.sheetId = ++seq),
+      getColumnWidth: (c) => (sh.colWidths && sh.colWidths[c]) || 100,
+      getRowHeight: (r) => (sh.rowHeights && sh.rowHeights[r]) || 21,
       getRange: (a, b, nr, nc) => {
         if (typeof a === 'string') {
           const m = a.match(/^([A-Z]+):([A-Z]+)$/);
@@ -271,7 +279,13 @@ export function createGas() {
   };
   const PropertiesService = { getUserProperties: () => ({ getProperty: (k) => props.get(k) ?? null, setProperty: (k, v) => { props.set(k, v); }, deleteProperty: (k) => { props.delete(k); } }) };
   let fetchHandler = () => ({ code: 500, body: '{}' });
-  const UrlFetchApp = { fetch: (url, opt) => { fetchLog.push({ url, opt }); const r = fetchHandler(url, opt); return { getResponseCode: () => r.code, getContentText: () => r.body }; } };
+  const UrlFetchApp = {
+    fetch: (url, opt) => {
+      fetchLog.push({ url, opt });
+      const r = /docs\.google\.com\/spreadsheets\/d\/[^/]+\/export/.test(url) ? { code: 200, body: '%PDF sheet' } : fetchHandler(url, opt);
+      return { getResponseCode: () => r.code, getContentText: () => r.body, getBlob: () => { const b = { name: 'x', mime: 'application/pdf', bytes: [...Buffer.from(r.body)] }; b.setName = (n) => { b.name = n; return b; }; return b; } };
+    },
+  };
 
   const HtmlService = { createHtmlOutput: (h) => { const o = { html: h }; o.setWidth = () => o; o.setHeight = () => o; return o; } };
   const Utilities = {
@@ -314,6 +328,7 @@ export function createGas() {
     createDoc: (name, build) => { const d = DocumentApp.create(name); build(d.getBody()); return d.getId(); },
     docText: (id) => files.get(id).doc.body.getText(),
     docBody: (id) => files.get(id).doc.body,
+    docFooter: (id) => files.get(id).doc.footer,
     sheetGrid: (id, name) => files.get(id).ss.sheets.find((s) => s.name === name).grid,
     liveFiles: (folderId) => [...files.values()].filter((f) => f.folder === folderId && !f.trashed),
   };

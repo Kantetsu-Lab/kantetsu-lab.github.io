@@ -227,7 +227,11 @@ test('planSheetListWrites: 展開 / 固定行 / 0 件', () => {
   const j = (x) => JSON.stringify(x);
   assert.equal(j(ctx.planSheetListWrites_([[5, 2]], ['a', 'b'])), j([[5, 2, 'a'], [6, 2, 'b']]));
   assert.equal(j(ctx.planSheetListWrites_([[5, 2], [7, 2]], ['a'])), j([[5, 2, 'a'], [7, 2, '']]));
-  assert.equal(j(ctx.planSheetListWrites_([[5, 2], [7, 2]], ['a', 'b', 'c'])), j([[5, 2, 'a'], [7, 2, 'b'], [8, 2, 'c']]));
+  const over = ctx.planSheetListWrites_([[5, 2], [7, 2]], ['a', 'b', 'c']);
+  assert.equal(j(over), j([[5, 2, 'a'], [7, 2, 'b']]), '固定欄の外には書かない');
+  assert.equal(over.overflow, 1);
+  assert.equal(ctx.pdfPortrait_(1200, 600), false);
+  assert.equal(ctx.pdfPortrait_(600, 900), true);
   assert.equal(j(ctx.planSheetListWrites_([[5, 2]], [])), j([[5, 2, '']]));
 });
 

@@ -108,6 +108,23 @@ test('ファイル名パターンに種別が無くても同名にならない',
   assert.ok(names.includes('田中 太郎_履歴書') && names.includes('田中 太郎_職務経歴書'), names.join(','));
 });
 
+test('会社フッター: 職務経歴書・推薦書の標準レイアウトに入り、履歴書には入れない', () => {
+  const { gas, ctx, ss } = boot();
+  setSetting(ss, '会社フッター', 'サンプル人材株式会社\n有料職業紹介事業 00-000000');
+  const logo = gas.addRawFile('logo.png', 'image/png', null);
+  setSetting(ss, '会社ロゴファイルID', logo);
+  gas.uiQueue.prompts.push('footer');
+  ctx.menuBuildAll();
+  const files = gas.liveFiles(outFolder(gas, 'footer').id).filter((f) => f.mime.includes('document'));
+  const by = (k) => files.find((f) => f.name.endsWith(k)).id;
+  for (const k of ['職務経歴書', '推薦書']) {
+    const f = gas.docFooter(by(k));
+    assert.ok(f && f.getText().startsWith('サンプル人材株式会社\n有料職業紹介事業 00-000000'), k);
+    assert.equal(f.paragraphs().reduce((n, p) => n + p.images, 0), 1, k + ' ロゴ');
+  }
+  assert.ok(!gas.docFooter(by('履歴書')), '履歴書は本人の書類なので入れない');
+});
+
 console.log('会社規定の用紙（ドキュメント）');
 function jisLikeDoc(gas) {
   return gas.createDoc('会社用紙_履歴書', (body) => {
@@ -213,8 +230,41 @@ test('単一行は下方向に展開、固定行は順に埋める、単一ト�
   assert.equal(g[3][2], 'サンプル高等学校 普通科 卒業');
   assert.equal(g[19][2], '普通自動車第一種運転免許 取得');
   assert.equal(g[20][2], '薬剤師免許 取得');
-  assert.equal(g[21][2], '一級小型船舶操縦士 取得', '固定 2 行を超えた分は下に続く');
+  assert.equal(g[21] ? g[21][2] || '' : '', '', '固定 2 行を超えた分は書かない');
+  assert.ok(gas.uiQueue.shown.some((m) => m.includes('資格 の欄が 1 行足りません')), gas.uiQueue.shown.join('\n'));
+  const exp = gas.fetchLog.find((f) => /spreadsheets\/d\/.+\/export\?format=pdf/.test(f.url));
+  assert.ok(exp && /portrait=true/.test(exp.url) && /fitw=true/.test(exp.url) && /gridlines=false/.test(exp.url), 'スプレッドシートの PDF は書き出し URL で');
   assert.ok(!JSON.stringify(g).includes('{{'));
+});
+
+test('見開きの用紙: 左の表を上から埋めて右の表へ続き、名称と区分を別の欄に書く', () => {
+  const { gas, ctx, ss } = boot();
+  const book = gas.createSpreadsheet('見開き履歴書', ['履歴書']);
+  const sh = book.getSheetByName('履歴書');
+  // 右（H〜K 列）の続きの表は上（5〜10 行）、左（B〜E 列）の表は下（20〜25 行）にある
+  sh.getRange(19, 2, 1, 4).setValues([['年', '月', '学歴・職歴', '']]);
+  sh.getRange(4, 8, 1, 4).setValues([['年', '月', '学歴・職歴', '']]);
+  const slot = ['{{学歴職歴_年}}', '{{学歴職歴_月}}', '{{学歴職歴_名称}}', '{{学歴職歴_区分}}'];
+  for (let i = 0; i < 6; i++) sh.getRange(20 + i, 2, 1, 4).setValues([slot]);
+  for (let i = 0; i < 6; i++) sh.getRange(5 + i, 8, 1, 4).setValues([slot]);
+  sh.getRange(26, 2, 1, 4).setValues([['', '', '（左の表の下）', '']]);
+  setSetting(ss, '履歴書テンプレート', book.getId());
+  gas.uiQueue.prompts.push('spread');
+  ctx.menuBuildRirekisho();
+  const out = gas.liveFiles(outFolder(gas, 'spread').id).find((f) => f.mime.includes('spreadsheet'));
+  const g = gas.sheetGrid(out.id, '履歴書');
+  const left = [0, 1, 2, 3, 4, 5].map((i) => g[19 + i].slice(1, 5));
+  const right = [0, 1, 2, 3, 4, 5].map((i) => g[4 + i].slice(7, 11));
+  assert.deepEqual(left[0], ['', '', '学歴', '']);
+  assert.deepEqual(left[1], ['2016', '3', 'サンプル高等学校 普通科', '卒業']);
+  assert.deepEqual(left[4], ['', '', '職歴', '']);
+  assert.deepEqual(left[5], ['2023', '4', '株式会社サンプルドラッグ', '入社']);
+  assert.deepEqual(right[0], ['2023', '6', '株式会社サンプルドラッグ', '一身上の都合により退社']);
+  assert.deepEqual(right[1], ['2023', '7', '株式会社サンプル薬局', '入社']);
+  assert.deepEqual(right[2], ['', '', '現在に至る', '']);
+  assert.deepEqual(right[3], ['', '', '', '以上']);
+  assert.deepEqual(right[5], ['', '', '', '']);
+  assert.equal(g[25][3], '（左の表の下）', '表の外は触らない');
 });
 
 console.log('AI 分析 → 提案 → 反映');
