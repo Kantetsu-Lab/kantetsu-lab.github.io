@@ -5,11 +5,13 @@
 
 function setupSheets_(ss, withSample) {
   var order = [KL.SHEET.BASIC, KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS, KL.SHEET.SKILLS,
-    KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS, KL.SHEET.TEXTS, KL.SHEET.SETTINGS];
+    KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS, KL.SHEET.TEXTS, KL.SHEET.SUISEN, KL.SHEET.ATTACH, KL.SHEET.SETTINGS];
 
   setupKeyValueSheet_(ss, KL.SHEET.BASIC, KL.BASIC_KEYS, withSample ? sampleBasic_() : null);
   setupKeyValueSheet_(ss, KL.SHEET.TEXTS, KL.TEXT_KEYS, withSample ? sampleTexts_() : null);
+  setupKeyValueSheet_(ss, KL.SHEET.SUISEN, KL.SUISEN_KEYS, withSample ? sampleSuisen_() : null);
   setupKeyValueSheet_(ss, KL.SHEET.SETTINGS, KL.SETTING_KEYS, null);
+  attachSheet_(ss);
 
   var samples = withSample ? sampleTables_() : {};
   [KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS, KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS]
@@ -107,6 +109,28 @@ function sampleBasic_() {
     '配偶者の扶養義務': '無',
     '志望の動機・特技・アピールポイント': '医療現場で業務改善とAI活用を主導し、調剤待ち時間を60%削減した経験を、貴社のクライアント企業のDX推進に活かしたいと考え志望いたしました。現場の暗黙知を言語化し、標準化して定着させることを得意としています。',
     '本人希望記入欄': '貴社の規定に従います。'
+  };
+}
+
+function sampleSuisen_() {
+  return {
+    '推薦先企業': '株式会社サンプルコンサルティング',
+    '推薦先部署・ご担当者': '人事部 採用ご担当者',
+    '推薦ポジション': 'DXコンサルタント（医療・ヘルスケア領域）',
+    '推薦者会社': 'サンプル人材株式会社',
+    '推薦者部署・役職': 'キャリアアドバイザー',
+    '推薦者氏名': '佐藤 花子',
+    '推薦者連絡先': '03-0000-0000 / sato@example.com',
+    '推薦ポイント': '医療現場の業務を分解し、待ち時間60%削減を実現した業務改善力\n4店舗横断でAI活用を定着させた推進力\n現場と経営の双方を理解した上での業務設計',
+    '推薦文': '田中様は、調剤薬局の薬剤師として現場業務に従事しながら、業務改善・DX推進担当として成果を上げてこられた方です。\n待ち時間の原因を業務量ではなく現場の優先順位判断のばらつきにあると仮説を立て、業務を週・日単位に分解して「今やらなくてよい業務」を明示することで、平均20分の待ち時間を8分（60%削減）に短縮されました。\nまた、AI活用では情報整理と候補提示をAI、最終判断を人が担う形で業務を再設計し、4店舗で月1回の講座を開催して定着まで伴走されています。\n医療現場の業務構造を理解し、仮説→実行→検証を回し切る姿勢は、貴社の医療・ヘルスケア領域のDX支援において即戦力として活躍いただけるものと考え、推薦いたします。',
+    '人物像・面談所感': '論理的かつ誠実なお人柄で、質問に対して結論から簡潔に回答されます。現場の声を丁寧に拾いながらも、構造で課題を捉える視点をお持ちです。',
+    '転職理由': '一店舗・一法人の改善にとどまらず、より多くの医療機関の業務変革に携わりたいため。',
+    '懸念点と見解': '1社目の在籍が3ヶ月と短期ですが、調剤未経験から専門性を高める目的での転職であり、現職では2年以上継続して成果を上げていることから、定着性に懸念はないと考えます。',
+    '現在年収': '462万円',
+    '希望年収': '600万円（最低 550万円）',
+    '入社可能時期': '内定後 3ヶ月',
+    '希望勤務地': '東京',
+    '面談メモ': ''
   };
 }
 

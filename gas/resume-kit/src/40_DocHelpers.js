@@ -144,19 +144,28 @@ function extractDriveId_(s) {
 }
 
 /** 保存先フォルダを決める。設定 → 前回の選択（ユーザープロパティ）→ ダイアログ の順 */
-function chooseOutputFolder_(ss, settings, ui) {
+function chooseOutputFolder_(ss, settings, ui, personName) {
+  var parent = chooseParentFolder_(ss, settings, ui);
+  if (!parent || !personName) return parent;
+  return candidateFolderIn_(parent, settings, personName);
+}
+
+/** 保存先（親）を決める。設定 → 前回の選択（ユーザープロパティ）→ ダイアログ の順 */
+function chooseParentFolder_(ss, settings, ui, opts) {
+  opts = opts || {};
   var configured = resolveFolder_(settings['出力フォルダ']);
-  if (configured) return configured;
+  if (configured && !opts.alwaysAsk) return configured;
   var props = PropertiesService.getUserProperties();
   var last = props.getProperty('LAST_OUTPUT_FOLDER_ID');
-  var lastFolder = null;
-  if (last) { try { lastFolder = DriveApp.getFolderById(last); } catch (e) { lastFolder = null; } }
+  var lastFolder = configured;
+  if (!lastFolder && last) { try { lastFolder = DriveApp.getFolderById(last); } catch (e) { lastFolder = null; } }
   if (!ui) return lastFolder || getDefaultOutputFolder_(ss);
-  var res = ui.prompt('保存先フォルダ',
+  var res = ui.prompt(opts.title || '保存先フォルダ',
+    (opts.lead ? opts.lead + '\n' : '') +
     'Google ドライブのフォルダ URL / ID / フォルダ名を入力してください。\n' +
     '存在しない名前ならマイドライブ直下に新規作成します。\n' +
-    (lastFolder ? '空欄 → 前回と同じ「' + lastFolder.getName() + '」\n' : '空欄 → このスプレッドシートと同じ場所の「履歴書_出力」\n') +
-    '（毎回聞かれたくない場合は「設定」シートの出力フォルダに入れてください）',
+    (lastFolder ? '空欄 → 「' + lastFolder.getName() + '」\n' : '空欄 → このスプレッドシートと同じ場所の「履歴書_出力」\n') +
+    (opts.alwaysAsk ? '' : '（毎回聞かれたくない場合は「設定」シートの出力フォルダに入れてください）'),
     ui.ButtonSet.OK_CANCEL);
   if (res.getSelectedButton() !== ui.Button.OK) return null;
   var spec = nz_(res.getResponseText());
@@ -171,6 +180,26 @@ function chooseOutputFolder_(ss, settings, ui) {
   }
   props.setProperty('LAST_OUTPUT_FOLDER_ID', folder.getId());
   return folder;
+}
+
+/** 候補者フォルダー名（設定「候補者フォルダー名」、既定 {氏名}様） */
+function candidateFolderName_(settings, personName, asOf) {
+  var pattern = nz_(settings['候補者フォルダー名']) || '{氏名}様';
+  return pattern.replace(/\{氏名\}/g, nz_(personName)).replace(/\{日付\}/g, formatCompactDate_(asOf || new Date()))
+    .replace(/[\\\/:*?"<>|]/g, '_');
+}
+
+/** 親フォルダーの中の「〇〇様」を返す（無ければ作る）。親がすでに「〇〇様」ならそのまま */
+function candidateFolderIn_(parent, settings, personName) {
+  if (!/^(はい|yes|true|1)$/i.test(nz_(settings['氏名様フォルダーを作る']) || 'はい')) return parent;
+  var name = candidateFolderName_(settings, personName);
+  if (parent.getName() === name) return parent;
+  return getOrCreateSubfolder_(parent, name);
+}
+
+function getOrCreateSubfolder_(parent, name) {
+  var it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
 }
 
 /** スプレッドシートと同じ場所の「履歴書_出力」 */

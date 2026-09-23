@@ -231,4 +231,36 @@ test('planSheetListWrites: 展開 / 固定行 / 0 件', () => {
   assert.equal(j(ctx.planSheetListWrites_([[5, 2]], [])), j([[5, 2, '']]));
 });
 
+console.log('candidate / attach / suisen');
+test('候補者フォルダー名・添付の直接渡し可否', () => {
+  assert.equal(ctx.candidateFolderName_({}, '山田 花子'), '山田 花子様');
+  assert.equal(ctx.candidateFolderName_({ '候補者フォルダー名': '{日付}_{氏名}' }, 'A/B', new Date(2026, 8, 23)), '20260923_A_B');
+  assert.ok(ctx.inlineSupported_('gemini', 'application/pdf'));
+  assert.ok(ctx.inlineSupported_('gemini', 'image/heic'));
+  assert.ok(!ctx.inlineSupported_('claude', 'image/heic'), 'Claude 非対応は OCR へ');
+  assert.ok(ctx.inlineSupported_('claude', 'image/png'));
+});
+test('parseJsonObject / cellValue', () => {
+  assert.equal(ctx.parseJsonObject_('```json\n{"a":1}\n```').a, 1);
+  assert.equal(ctx.parseJsonObject_('説明 {"a":{"b":2}} 以上').a.b, 2);
+  assert.equal(ctx.parseJsonObject_('なし'), null);
+  assert.equal(ctx.cellValue_(['a', '', 'b']), 'a\nb');
+  assert.equal(ctx.cellValue_(2018), '2018');
+  assert.equal(ctx.cellValue_(null), '');
+});
+test('取り込み指示文に全シートの見出しが入る', () => {
+  const p = ctx.buildImportPrompt_(ctx.loadModel(makeSS()));
+  for (const h of ['"入社年"', '"支援内容（1行1項目）"', '"履歴書に載せる"', '"要確認"', '"希望年収"', '田中 太郎']) assert.ok(p.includes(h), h);
+  assert.ok(!p.includes('"写真ファイルID"'));
+});
+test('推薦書 compose / チェック', () => {
+  const m = ctx.loadModel(makeSS());
+  const d = ctx.composeSuisen_(m);
+  assert.equal(d.current, '株式会社サンプル薬局（調剤薬局／業務改善・DX推進担当）');
+  assert.equal(d.education, '2023年3月　サンプル大学 薬学部 薬学科 卒業');
+  assert.equal(d.points.length, 0, 'makeSS には推薦書シートが無い');
+  const errs = ctx.runSuisenChecks_(m).filter((r) => r.level === 'ERROR').map((r) => r.item);
+  assert.ok(errs.includes('推薦先企業') && errs.includes('推薦文'));
+});
+
 console.log(`\n${passed} tests passed`);

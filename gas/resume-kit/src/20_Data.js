@@ -52,6 +52,9 @@ function loadModel(ss) {
   var basicRaw = readKeyValue_(ss, KL.SHEET.BASIC);
   var texts = readKeyValue_(ss, KL.SHEET.TEXTS);
   var settingsRaw = readKeyValue_(ss, KL.SHEET.SETTINGS);
+  var suisenRaw = readKeyValue_(ss, KL.SHEET.SUISEN);
+  var suisen = {};
+  KL.SUISEN_KEYS.forEach(function (k) { suisen[k[0]] = nz_(suisenRaw[k[0]]); });
 
   // v1.0 の設定名からの引き継ぎ（セットアップ未実行でも動くように）
   var legacy = KL.LEGACY_SETTINGS;
@@ -153,6 +156,7 @@ function loadModel(ss) {
     licenses: licenses,
     achievements: achievements,
     texts: { summary: nz_(texts['職務要約']), pr: nz_(texts['自己PR']) },
+    suisen: suisen,
     settings: settings
   };
 }

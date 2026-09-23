@@ -1,6 +1,6 @@
 ---
 name: kantetsu-resume
-description: 履歴書・職務経歴書の作成支援。Kantetsu Lab 標準フォーマット（GAS 版ジェネレーター gas/resume-kit）の内容作成・添削・コード改修に使う。「履歴書」「職務経歴書」「職歴」「自己PR」「職務要約」「resume」「CV」が出たら使う。
+description: 履歴書・職務経歴書・推薦書の作成支援。Kantetsu Lab 標準フォーマット（GAS 版ジェネレーター gas/resume-kit）の内容作成・添削・コード改修に使う。「履歴書」「職務経歴書」「推薦書」「推薦状」「職歴」「自己PR」「職務要約」「resume」「CV」が出たら使う。
 ---
 
 # Kantetsu Lab 履歴書・職務経歴書スキル
@@ -13,6 +13,12 @@ description: 履歴書・職務経歴書の作成支援。Kantetsu Lab 標準フ
 1. **内容作成**: ユーザーの経歴をヒアリングし、スプレッドシートの各シートにそのまま貼れる形（タブ区切り or 表）で出す
 2. **添削**: `gas/resume-kit/src/00_Config.js` の `KL.REVIEW_RULES` と同じ観点で添削する
 3. **コード改修**: レイアウト・チェックルール・サンプルの変更。`src/` を直し、テストとバンドルを回す
+
+## 推薦書の書き方（内容作成を頼まれたとき）
+
+- 推薦ポイントは 3 つ、1 行 30 字以内。ポジション要件に結びつく強みを数値実績とセットで
+- 推薦文は ①結論 ②根拠の経験と数値 ③再現性 ④入社後の貢献 の順、400〜800 字、敬体
+- 懸念点（短期離職・ブランク・未経験領域・年収ギャップ）は先回りして見解と根拠を書く
 
 ## 内容作成の進め方
 
@@ -34,7 +40,7 @@ npm run build:gas   # dist/resume-kit.gs 再生成（必ずコミットに含め
 - 新しい GAS メソッドを使ったら `test/gas-mock.mjs` にも足す。実 API に存在するメソッド名・戻り値だけを再現すること
 - セル結合（TableCell.merge）は使わない。列構成が違う行は表を分けて `newStackedTable_` で積む
 
-- 構成: `00_Config`（定数・シート定義・添削ルール・テンプレートトークン）→ `10_Util`（純粋関数）→ `20_Data`（シート→モデル）→ `30_Check` → `40_DocHelpers`（保存先選択・ファイル名・PDF）→ `45_Template`（会社規定の用紙への流し込み・診断・トークン自動挿入）→ `50_Rirekisho` / `60_Shokumu`（compose = 純粋、render = DocumentApp）→ `70_AiReview`（Gemini/Claude、提案 JSON、反映）→ `80_Setup` → `90_Menu`
+- 構成: `00_Config`（定数・シート定義・添削ルール・テンプレートトークン）→ `10_Util`（純粋関数）→ `20_Data`（シート→モデル）→ `30_Check` → `40_DocHelpers`（保存先選択・ファイル名・PDF）→ `45_Template`（会社規定の用紙への流し込み・診断・トークン自動挿入）→ `46_Candidate`（〇〇様フォルダー・入力シート複製）→ `47_Attach`（添付のアップロード・登録・読み取り）→ `48_Import`（AI で入力シートを埋める）→ `50_Rirekisho` / `55_Suisen` / `60_Shokumu`（compose = 純粋、render = DocumentApp）→ `70_AiReview`（Gemini/Claude、提案 JSON、反映）→ `80_Setup` → `90_Menu`
 - グローバル `KL.*` への代入は `00_Config` にだけ書く（GAS のファイル読み込み順に依存しないため）
 - 新しい入力項目を足すときは `00_Config` の KEYS/HEADERS/NOTES → `20_Data` → compose → render → テスト の順
 - GAS の実行はローカルでできない。DocumentApp を触ったら「実機で ③ 両方を生成 して確認」を報告に含める

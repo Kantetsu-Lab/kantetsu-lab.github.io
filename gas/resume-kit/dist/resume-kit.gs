@@ -1,7 +1,7 @@
 /*
  * Kantetsu Lab 履歴書・職務経歴書ジェネレーター（Google Apps Script）
  * このファイルは gas/resume-kit/src/*.js から自動生成されています。直接編集せず src を直して `node gas/resume-kit/bundle.mjs` を実行してください。
- * generated: 2026-09-23T01:00:31.755Z
+ * generated: 2026-09-23T01:12:29.410Z
  */
 // ===== 00_Config.js =====
 /**
@@ -11,7 +11,7 @@
 
 var KL = KL || {};
 
-KL.VERSION = '1.1.0';
+KL.VERSION = '1.2.0';
 KL.MENU_TITLE = '履歴書ツール';
 
 // シート名
@@ -24,9 +24,12 @@ KL.SHEET = {
   LICENSES: '免許・資格',
   ACHIEVEMENTS: '実績',
   TEXTS: '文章',
+  SUISEN: '推薦書',
+  ATTACH: '添付資料',
   SETTINGS: '設定',
   CHECK: 'チェック結果',
-  AI: 'AI添削'
+  AI: 'AI添削',
+  IMPORT: '取り込み結果'
 };
 
 // 「項目 / 値 / 説明」形式のシートのキー定義
@@ -69,8 +72,42 @@ KL.SETTING_KEYS = [
   ['AIプロバイダ', 'gemini', 'gemini / claude'],
   ['Geminiモデル', 'gemini-2.5-pro', 'Gemini API のモデル名'],
   ['Claudeモデル', 'claude-opus-5', 'Claude API のモデルID'],
-  ['AI思考の深さ', 'medium', 'Claude 用: low / medium / high（高いほど時間がかかる。GAS の通信制限内に収めるなら medium 推奨）']
+  ['AI思考の深さ', 'medium', 'Claude 用: low / medium / high（高いほど時間がかかる。GAS の通信制限内に収めるなら medium 推奨）'],
+  ['推薦書テンプレート', '', '会社規定の推薦書の用紙（URL / ID）。空欄なら標準レイアウト'],
+  ['推薦書フォント', 'Noto Sans JP', ''],
+  ['氏名様フォルダーを作る', 'はい', 'はい → 選んだ保存先の中に「{氏名}様」フォルダーを作って保存 / いいえ → 選んだフォルダーに直接保存'],
+  ['候補者フォルダー名', '{氏名}様', '使えるトークン: {氏名} {日付}'],
+  ['添付フォルダ', '', '添付資料の保存先（新規作成・添付時に自動で入る）'],
+  ['Gemini抽出モデル', 'gemini-2.5-flash', '添付資料の読み取りに使う Gemini モデル（大量の資料を速く読むため flash 推奨）']
 ];
+
+// 推薦書シート（項目 / 値 / 説明）
+KL.SUISEN_KEYS = [
+  ['推薦先企業', '', '例: 株式会社〇〇'],
+  ['推薦先部署・ご担当者', '', '例: 人事部 採用ご担当者'],
+  ['推薦ポジション', '', '例: DXコンサルタント（医療・ヘルスケア領域）'],
+  ['推薦日', '', '空欄なら作成日'],
+  ['推薦者会社', '', '例: Kantetsu Lab 株式会社'],
+  ['推薦者部署・役職', '', ''],
+  ['推薦者氏名', '', ''],
+  ['推薦者連絡先', '', '電話 / メール'],
+  ['推薦ポイント', '', '1行1項目。3つが目安（見出しになる短い文）'],
+  ['推薦文', '', '推薦理由の本文。400〜800字目安'],
+  ['人物像・面談所感', '', ''],
+  ['転職理由', '', ''],
+  ['懸念点と見解', '', '懸念とそれに対する見解・フォロー。選考で聞かれる前に先回りする'],
+  ['現在年収', '', '例: 462万円'],
+  ['希望年収', '', '例: 600万円（最低 550万円）'],
+  ['入社可能時期', '', '例: 内定後 3ヶ月'],
+  ['希望勤務地', '', ''],
+  ['他社選考状況', '', ''],
+  ['面談メモ', '', 'AI 下書き用のメモ。書類には出力しない']
+];
+
+// 添付資料シートの見出し
+KL.ATTACH_HEADERS = ['取り込む', 'ファイル名', '種類', 'ID', '場所', '追加日', '状態'];
+// 読み取りの上限
+KL.ATTACH_LIMITS = { TEXT_PER_FILE: 60000, TEXT_TOTAL: 200000, INLINE_PER_FILE: 10 * 1024 * 1024, INLINE_TOTAL: 18 * 1024 * 1024, UPLOAD_PER_FILE: 15 * 1024 * 1024, FILES_PER_FOLDER: 50 };
 
 // 表形式シートの見出し
 KL.HEADERS = {};
@@ -154,7 +191,13 @@ KL.TOKENS_SINGLE = [
   ['通勤時間', ''], ['扶養家族数', ''], ['配偶者', ''], ['配偶者の扶養義務', ''], ['志望動機', '志望の動機・特技・アピールポイント'], ['本人希望', '本人希望記入欄'],
   ['写真', 'ドキュメントのみ: 写真ファイルIDの画像を挿入'],
   ['職務要約', ''], ['自己PR', ''], ['経験能力', '活かせる経験・能力（複数段落）'], ['職務経歴詳細', '会社・プロジェクト詳細をテキストで'],
-  ['実績', '表彰・登壇（1行1件）'], ['資格一覧', '免許・資格（1行1件）']
+  ['実績', '表彰・登壇（1行1件）'], ['資格一覧', '免許・資格（1行1件）'],
+  // 推薦書
+  ['推薦先企業', ''], ['推薦先部署', '推薦先部署・ご担当者'], ['推薦ポジション', ''], ['推薦日', '2026年9月23日 の形式'],
+  ['推薦者会社', ''], ['推薦者部署', ''], ['推薦者氏名', ''], ['推薦者連絡先', ''],
+  ['推薦ポイント', '・付き 1行1項目'], ['推薦文', ''], ['人物像', '人物像・面談所感'], ['転職理由', ''], ['懸念点', '懸念点と見解'],
+  ['現在年収', ''], ['希望年収', ''], ['入社可能時期', ''], ['希望勤務地', ''], ['他社選考状況', ''],
+  ['現職', '直近の会社名（部門・職位）'], ['最終学歴', '最後の卒業・修了']
 ];
 // 行リストトークン: 用紙の 1 行（ドキュメントは表の行、スプレッドシートは開始行）に置くと、行数分展開される
 KL.TOKENS_LIST = {
@@ -170,11 +213,17 @@ KL.LABEL_TO_TOKEN = [
   ['現住所', '{{現住所}}'], ['住所', '{{現住所}}'], ['電話', '{{電話}}'], ['TEL', '{{電話}}'], ['携帯', '{{携帯}}'], ['メール', '{{メール}}'], ['E-mail', '{{メール}}'], ['Email', '{{メール}}'],
   ['連絡先', '{{連絡先}}'], ['通勤時間', '{{通勤時間}}'], ['扶養家族', '{{扶養家族数}}'], ['配偶者の扶養義務', '{{配偶者の扶養義務}}'], ['配偶者', '{{配偶者}}'],
   ['志望の動機', '{{志望動機}}'], ['志望動機', '{{志望動機}}'], ['本人希望', '{{本人希望}}'], ['職務要約', '{{職務要約}}'], ['職務概要', '{{職務要約}}'], ['自己PR', '{{自己PR}}'],
-  ['活かせる経験', '{{経験能力}}'], ['職務経歴', '{{職務経歴詳細}}'], ['免許・資格', '{{資格_内容}}'], ['資格', '{{資格_内容}}'], ['学歴・職歴', '{{学歴職歴_内容}}'], ['学歴', '{{学歴_内容}}'], ['職歴', '{{職歴_内容}}']
+  ['活かせる経験', '{{経験能力}}'], ['推薦理由', '{{推薦ポイント}}'], ['推薦ポイント', '{{推薦ポイント}}'], ['推薦文', '{{推薦文}}'], ['推薦ポジション', '{{推薦ポジション}}'], ['人物像', '{{人物像}}'], ['面談所感', '{{人物像}}'], ['転職理由', '{{転職理由}}'], ['懸念', '{{懸念点}}'], ['希望年収', '{{希望年収}}'], ['現在年収', '{{現在年収}}'], ['現年収', '{{現在年収}}'], ['入社可能', '{{入社可能時期}}'], ['職務経歴', '{{職務経歴詳細}}'], ['免許・資格', '{{資格_内容}}'], ['資格', '{{資格_内容}}'], ['学歴・職歴', '{{学歴職歴_内容}}'], ['学歴', '{{学歴_内容}}'], ['職歴', '{{職歴_内容}}']
 ];
 
 // AI の system プロンプト
 KL.AI_SYSTEM = 'あなたは日本の転職市場に精通したキャリアアドバイザーです。事実（社名・年月・数値）を創作せず、指示された形式で日本語で回答してください。';
+
+// AI に書き換えを許す入力シート
+KL.AI_WRITABLE = [KL.SHEET.BASIC, KL.SHEET.TEXTS, KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS,
+  KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS, KL.SHEET.SUISEN];
+// 項目 / 値 形式のシート
+KL.KV_SHEETS = [KL.SHEET.BASIC, KL.SHEET.TEXTS, KL.SHEET.SUISEN, KL.SHEET.SETTINGS];
 
 
 // ===== 10_Util.js =====
@@ -385,6 +434,9 @@ function loadModel(ss) {
   var basicRaw = readKeyValue_(ss, KL.SHEET.BASIC);
   var texts = readKeyValue_(ss, KL.SHEET.TEXTS);
   var settingsRaw = readKeyValue_(ss, KL.SHEET.SETTINGS);
+  var suisenRaw = readKeyValue_(ss, KL.SHEET.SUISEN);
+  var suisen = {};
+  KL.SUISEN_KEYS.forEach(function (k) { suisen[k[0]] = nz_(suisenRaw[k[0]]); });
 
   // v1.0 の設定名からの引き継ぎ（セットアップ未実行でも動くように）
   var legacy = KL.LEGACY_SETTINGS;
@@ -486,6 +538,7 @@ function loadModel(ss) {
     licenses: licenses,
     achievements: achievements,
     texts: { summary: nz_(texts['職務要約']), pr: nz_(texts['自己PR']) },
+    suisen: suisen,
     settings: settings
   };
 }
@@ -810,19 +863,28 @@ function extractDriveId_(s) {
 }
 
 /** 保存先フォルダを決める。設定 → 前回の選択（ユーザープロパティ）→ ダイアログ の順 */
-function chooseOutputFolder_(ss, settings, ui) {
+function chooseOutputFolder_(ss, settings, ui, personName) {
+  var parent = chooseParentFolder_(ss, settings, ui);
+  if (!parent || !personName) return parent;
+  return candidateFolderIn_(parent, settings, personName);
+}
+
+/** 保存先（親）を決める。設定 → 前回の選択（ユーザープロパティ）→ ダイアログ の順 */
+function chooseParentFolder_(ss, settings, ui, opts) {
+  opts = opts || {};
   var configured = resolveFolder_(settings['出力フォルダ']);
-  if (configured) return configured;
+  if (configured && !opts.alwaysAsk) return configured;
   var props = PropertiesService.getUserProperties();
   var last = props.getProperty('LAST_OUTPUT_FOLDER_ID');
-  var lastFolder = null;
-  if (last) { try { lastFolder = DriveApp.getFolderById(last); } catch (e) { lastFolder = null; } }
+  var lastFolder = configured;
+  if (!lastFolder && last) { try { lastFolder = DriveApp.getFolderById(last); } catch (e) { lastFolder = null; } }
   if (!ui) return lastFolder || getDefaultOutputFolder_(ss);
-  var res = ui.prompt('保存先フォルダ',
+  var res = ui.prompt(opts.title || '保存先フォルダ',
+    (opts.lead ? opts.lead + '\n' : '') +
     'Google ドライブのフォルダ URL / ID / フォルダ名を入力してください。\n' +
     '存在しない名前ならマイドライブ直下に新規作成します。\n' +
-    (lastFolder ? '空欄 → 前回と同じ「' + lastFolder.getName() + '」\n' : '空欄 → このスプレッドシートと同じ場所の「履歴書_出力」\n') +
-    '（毎回聞かれたくない場合は「設定」シートの出力フォルダに入れてください）',
+    (lastFolder ? '空欄 → 「' + lastFolder.getName() + '」\n' : '空欄 → このスプレッドシートと同じ場所の「履歴書_出力」\n') +
+    (opts.alwaysAsk ? '' : '（毎回聞かれたくない場合は「設定」シートの出力フォルダに入れてください）'),
     ui.ButtonSet.OK_CANCEL);
   if (res.getSelectedButton() !== ui.Button.OK) return null;
   var spec = nz_(res.getResponseText());
@@ -837,6 +899,26 @@ function chooseOutputFolder_(ss, settings, ui) {
   }
   props.setProperty('LAST_OUTPUT_FOLDER_ID', folder.getId());
   return folder;
+}
+
+/** 候補者フォルダー名（設定「候補者フォルダー名」、既定 {氏名}様） */
+function candidateFolderName_(settings, personName, asOf) {
+  var pattern = nz_(settings['候補者フォルダー名']) || '{氏名}様';
+  return pattern.replace(/\{氏名\}/g, nz_(personName)).replace(/\{日付\}/g, formatCompactDate_(asOf || new Date()))
+    .replace(/[\\\/:*?"<>|]/g, '_');
+}
+
+/** 親フォルダーの中の「〇〇様」を返す（無ければ作る）。親がすでに「〇〇様」ならそのまま */
+function candidateFolderIn_(parent, settings, personName) {
+  if (!/^(はい|yes|true|1)$/i.test(nz_(settings['氏名様フォルダーを作る']) || 'はい')) return parent;
+  var name = candidateFolderName_(settings, personName);
+  if (parent.getName() === name) return parent;
+  return getOrCreateSubfolder_(parent, name);
+}
+
+function getOrCreateSubfolder_(parent, name) {
+  var it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
 }
 
 /** スプレッドシートと同じ場所の「履歴書_出力」 */
@@ -933,6 +1015,14 @@ function buildTokenValues_(model) {
     '実績': s.achievementGroups.map(function (g) { return g.items.map(function (it) { return '・' + it + '（' + g.title + '）'; }).join('\n'); }).join('\n'),
     '資格一覧': s.licenseGroups.map(function (g) { return g.items.map(function (it) { return '・' + it; }).join('\n'); }).join('\n')
   };
+  var su = composeSuisen_(model);
+  var sv = model.suisen || {};
+  single['推薦先企業'] = su.to; single['推薦先部署'] = su.toDept; single['推薦ポジション'] = su.position; single['推薦日'] = su.dateLabel;
+  single['推薦者会社'] = nz_(sv['推薦者会社']); single['推薦者部署'] = nz_(sv['推薦者部署・役職']); single['推薦者氏名'] = nz_(sv['推薦者氏名']); single['推薦者連絡先'] = nz_(sv['推薦者連絡先']);
+  single['推薦ポイント'] = su.points.map(function (p) { return '・' + p; }).join('\n');
+  single['推薦文'] = su.letter.join('\n'); single['人物像'] = su.persona.join('\n'); single['転職理由'] = su.reason.join('\n'); single['懸念点'] = su.concern.join('\n');
+  single['現在年収'] = su.salaryNow; single['希望年収'] = su.salaryWish; single['入社可能時期'] = su.joinable; single['希望勤務地'] = su.location; single['他社選考状況'] = su.others;
+  single['現職'] = su.current; single['最終学歴'] = su.education;
   var hist = r.historyRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text]; });
   var eduRows = [], jobRows = [], mode = '';
   hist.forEach(function (row) {
@@ -1187,9 +1277,10 @@ function classifyTokens_(text) {
     });
     if (singles.indexOf(t) >= 0 || isList) known.push(t); else unknown.push(t);
   });
-  var essential = ['氏名', '生年月日', '現住所'];
+  var isSuisen = !!(found['推薦文'] || found['推薦ポイント'] || found['推薦ポジション']);
+  var essential = isSuisen ? ['氏名', '推薦文'] : ['氏名', '生年月日', '現住所'];
   var missing = essential.filter(function (e) { return !found[e] && !found[e + '_年']; });
-  if (!Object.keys(found).some(function (t) { return /^(学歴職歴|学歴|職歴)_/.test(t); }) && !found['職務経歴詳細']) missing.push('学歴職歴_内容（または 学歴_内容 / 職歴_内容 / 職務経歴詳細）');
+  if (!isSuisen && !Object.keys(found).some(function (t) { return /^(学歴職歴|学歴|職歴)_/.test(t); }) && !found['職務経歴詳細']) missing.push('学歴職歴_内容（または 学歴_内容 / 職歴_内容 / 職務経歴詳細）');
   return { known: known.sort(), unknown: unknown.sort(), missing: missing };
 }
 
@@ -1235,7 +1326,7 @@ function resolveLabelToken_(label, below, used) {
 
 /** 右隣が埋まっているとき、直下や同じセルに入れてよい「文章欄」のトークン */
 function isBlockToken_(t) {
-  return ['{{志望動機}}', '{{本人希望}}', '{{職務要約}}', '{{自己PR}}', '{{経験能力}}', '{{職務経歴詳細}}'].indexOf(t) >= 0;
+  return ['{{志望動機}}', '{{本人希望}}', '{{職務要約}}', '{{自己PR}}', '{{経験能力}}', '{{職務経歴詳細}}', '{{推薦ポイント}}', '{{推薦文}}', '{{人物像}}', '{{転職理由}}', '{{懸念点}}'].indexOf(t) >= 0;
 }
 
 /** リスト系トークン {{学歴職歴_内容}} → 名前 */
@@ -1350,6 +1441,516 @@ function autoInsertTokensSheet_(ssId) {
   });
   SpreadsheetApp.flush();
   return count;
+}
+
+
+// ===== 46_Candidate.js =====
+/**
+ * 新規作成: 任意の親フォルダーに「〇〇様」フォルダー（＋添付資料フォルダー）を作り、
+ * このスプレッドシート（スクリプトごと）を「〇〇様_入力シート」として複製して入れる。
+ * 複製側は入力データを空にし、保存先・添付先を「〇〇様」フォルダーに設定済みにする。
+ * 設定（テンプレート・フォント・AI など）は引き継ぐ。
+ */
+
+
+function createCandidate_(ss, personName, parent) {
+  var settings = loadModel(ss).settings;
+  var folderName = candidateFolderName_(settings, personName);
+  var folder = getOrCreateSubfolder_(parent, folderName);
+  var attach = getOrCreateSubfolder_(folder, '添付資料');
+
+  var copyName = folderName + '_入力シート';
+  var existing = folder.getFilesByName(copyName);
+  if (existing.hasNext()) {
+    var f = existing.next();
+    return { folder: folder, attach: attach, ssId: f.getId(), ssUrl: f.getUrl(), reused: true };
+  }
+  var copy = DriveApp.getFileById(ss.getId()).makeCopy(copyName, folder);
+  var cs = SpreadsheetApp.openById(copy.getId());
+  resetCandidateSheet_(cs, personName, folder, attach);
+  return { folder: folder, attach: attach, ssId: copy.getId(), ssUrl: copy.getUrl(), reused: false };
+}
+
+/** 複製したスプレッドシートを空の入力シートにする */
+function resetCandidateSheet_(cs, personName, folder, attach) {
+  setupSheets_(cs, false);
+  // 表形式シートはデータ行を消す
+  [KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS, KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS, KL.SHEET.ATTACH]
+    .forEach(function (name) {
+      var sh = cs.getSheetByName(name);
+      if (!sh) return;
+      var last = sh.getLastRow();
+      var cols = Math.max(sh.getLastColumn(), 1);
+      if (last >= 2) sh.getRange(2, 1, last - 1, cols).clearContent();
+    });
+  // 項目 / 値 形式は値を既定に戻す（推薦者欄は会社として共通なので残す）
+  var keep = { '推薦者会社': true, '推薦者部署・役職': true, '推薦者氏名': true, '推薦者連絡先': true };
+  [[KL.SHEET.BASIC, KL.BASIC_KEYS], [KL.SHEET.TEXTS, KL.TEXT_KEYS], [KL.SHEET.SUISEN, KL.SUISEN_KEYS]].forEach(function (pair) {
+    var sh = cs.getSheetByName(pair[0]);
+    var defaults = {};
+    pair[1].forEach(function (k) { defaults[k[0]] = k[1]; });
+    var rows = sh.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      var key = nz_(rows[i][0]);
+      if (key in defaults && !keep[key]) sh.getRange(i + 1, 2).setValue(defaults[key]);
+    }
+  });
+  writeKv_(cs, KL.SHEET.BASIC, '氏名', personName);
+  writeKv_(cs, KL.SHEET.SETTINGS, '出力フォルダ', folder.getId());
+  writeKv_(cs, KL.SHEET.SETTINGS, '添付フォルダ', attach.getId());
+  // 作業用シートは消す
+  [KL.SHEET.CHECK, KL.SHEET.AI, KL.SHEET.IMPORT, 'AI提案', 'トークン一覧'].forEach(function (n) {
+    var sh = cs.getSheetByName(n);
+    if (sh) cs.deleteSheet(sh);
+  });
+}
+
+/** 項目 / 値 形式のシートの値を書く（行が無ければ追加） */
+function writeKv_(ss, sheetName, key, value) {
+  var sh = ss.getSheetByName(sheetName);
+  if (!sh) return;
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (nz_(rows[i][0]) === key) { sh.getRange(i + 1, 2).setValue(value); return; }
+  }
+  var r = sh.getLastRow() + 1;
+  sh.getRange(r, 1, 1, 2).setValues([[key, value]]);
+}
+
+/** 添付フォルダ（設定 → 出力フォルダ/〇〇様/添付資料）。ui があれば保存先を聞く */
+function ensureAttachFolder_(ss, model, ui) {
+  var configured = resolveFolder_(model.settings['添付フォルダ']);
+  if (configured) return configured;
+  var name = nz_(model.basic['氏名']);
+  if (!name) throw new Error('先に「基本情報」の氏名を入力するか、「⓪ 新規候補者を作成」で候補者フォルダーを作ってください。');
+  var folder = chooseOutputFolder_(ss, model.settings, ui, name);
+  if (!folder) return null;
+  var attach = getOrCreateSubfolder_(folder, '添付資料');
+  writeKv_(ss, KL.SHEET.SETTINGS, '添付フォルダ', attach.getId());
+  return attach;
+}
+
+
+// ===== 47_Attach.js =====
+/**
+ * 添付資料: PC からのアップロード（ファイル / フォルダー）と、ドライブ上のファイル・フォルダーの登録。
+ * 読み取り: Google ドキュメント / スプレッドシート / スライド、Word / Excel / PowerPoint（変換）、
+ *           テキスト・CSV、PDF・画像（AI に直接渡す。大きすぎる場合は Drive の OCR）。
+ */
+
+var MIME_EXTRA_ = {
+  GSLIDES: 'application/vnd.google-apps.presentation',
+  FOLDER: 'application/vnd.google-apps.folder',
+  PPTX: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  PPT: 'application/vnd.ms-powerpoint',
+  PDF: 'application/pdf'
+};
+
+// ---------------- 添付資料シート
+
+function attachSheet_(ss) {
+  var sh = ss.getSheetByName(KL.SHEET.ATTACH);
+  if (!sh) {
+    sh = ss.insertSheet(KL.SHEET.ATTACH);
+    sh.getRange(1, 1, 1, KL.ATTACH_HEADERS.length).setValues([KL.ATTACH_HEADERS]).setFontWeight('bold').setBackground('#e8eaed');
+    sh.setColumnWidth(1, 60).setColumnWidth(2, 260).setColumnWidth(3, 120).setColumnWidth(4, 120).setColumnWidth(5, 220).setColumnWidth(6, 100).setColumnWidth(7, 220);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+/** 添付を 1 件登録（同じ ID は登録しない）。登録したら true */
+function registerAttachment_(ss, file, where) {
+  var sh = attachSheet_(ss);
+  var last = sh.getLastRow();
+  if (last >= 2) {
+    var ids = sh.getRange(2, 4, last - 1, 1).getValues().map(function (r) { return nz_(r[0]); });
+    if (ids.indexOf(file.getId()) >= 0) return false;
+  }
+  var r = last + 1;
+  sh.getRange(r, 1, 1, KL.ATTACH_HEADERS.length).setValues([[true, file.getName(), mimeLabel_(file.getMimeType()), file.getId(), where || '', formatIsoDate_(new Date()), '未読']]);
+  sh.getRange(r, 1).insertCheckboxes();
+  return true;
+}
+
+function mimeLabel_(mime) {
+  var map = {};
+  map[MIME_.GDOC] = 'Googleドキュメント'; map[MIME_.GSHEET] = 'Googleスプレッドシート'; map[MIME_EXTRA_.GSLIDES] = 'Googleスライド';
+  map[MIME_.DOCX] = 'Word'; map[MIME_.DOC] = 'Word'; map[MIME_.XLSX] = 'Excel'; map[MIME_.XLS] = 'Excel';
+  map[MIME_EXTRA_.PPTX] = 'PowerPoint'; map[MIME_EXTRA_.PPT] = 'PowerPoint'; map[MIME_EXTRA_.PDF] = 'PDF';
+  if (map[mime]) return map[mime];
+  if (/^image\//.test(mime)) return '画像';
+  if (/^text\/|json|csv/.test(mime)) return 'テキスト';
+  return mime;
+}
+
+/** 取り込み対象（チェックあり）の行 */
+function checkedAttachments_(ss) {
+  var sh = ss.getSheetByName(KL.SHEET.ATTACH);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, KL.ATTACH_HEADERS.length).getValues()
+    .map(function (r, i) { return { row: i + 2, checked: r[0] === true, name: nz_(r[1]), id: nz_(r[3]) }; })
+    .filter(function (x) { return x.checked && x.id; });
+}
+
+function setAttachStatus_(ss, row, status) {
+  ss.getSheetByName(KL.SHEET.ATTACH).getRange(row, 7).setValue(status);
+}
+
+// ---------------- ダイアログから呼ばれる（google.script.run で呼ぶため末尾 _ なし）
+
+/** PC からのアップロード 1 件。obj: { name, mime, data(base64), path(相対パス。フォルダー添付時) } */
+function uploadAttachment(obj) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var model = loadModel(ss);
+  var root = resolveFolder_(model.settings['添付フォルダ']);
+  if (!root) throw new Error('添付フォルダが未設定です。メニューから開き直してください。');
+  var dir = root;
+  var parts = nz_(obj.path).split('/').filter(function (x) { return x; });
+  parts.pop(); // ファイル名
+  parts.forEach(function (p) { dir = getOrCreateSubfolder_(dir, p); });
+  var bytes = Utilities.base64Decode(obj.data);
+  if (bytes.length > KL.ATTACH_LIMITS.UPLOAD_PER_FILE) throw new Error(obj.name + ' は大きすぎます（15MB まで）。ドライブに置いて URL で登録してください。');
+  var file = dir.createFile(Utilities.newBlob(bytes, obj.mime || 'application/octet-stream', obj.name));
+  registerAttachment_(ss, file, parts.length ? parts.join('/') : 'アップロード');
+  return file.getName();
+}
+
+/** ドライブの URL / ID（改行区切り）を登録。フォルダーは中身を再帰的に登録。登録件数を返す */
+function addDriveAttachments(text) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var count = 0;
+  nz_(text).split(/[\s,]+/).map(extractDriveId_).filter(function (x) { return x; }).forEach(function (id) {
+    var folder = null;
+    try { folder = DriveApp.getFolderById(id); } catch (e) { folder = null; }
+    if (folder) {
+      listFolderFiles_(folder, folder.getName(), KL.ATTACH_LIMITS.FILES_PER_FOLDER).forEach(function (x) {
+        if (registerAttachment_(ss, x.file, x.path)) count++;
+      });
+      return;
+    }
+    var file = DriveApp.getFileById(id); // 見つからなければ例外 → ダイアログに表示
+    if (registerAttachment_(ss, file, 'ドライブ')) count++;
+  });
+  return count;
+}
+
+function listFolderFiles_(folder, path, limit) {
+  var out = [];
+  var files = folder.getFiles();
+  while (files.hasNext() && out.length < limit) out.push({ file: files.next(), path: path });
+  var subs = folder.getFolders();
+  while (subs.hasNext() && out.length < limit) {
+    var sub = subs.next();
+    out = out.concat(listFolderFiles_(sub, path + '/' + sub.getName(), limit - out.length));
+  }
+  return out;
+}
+
+// ---------------- 読み取り
+
+/**
+ * 1 ファイルを読み取る。
+ * 戻り値: { kind: 'text', text } | { kind: 'inline', mime, data(base64), size } | { kind: 'skip', reason }
+ * inlineOk: PDF・画像を AI に直接渡せるか（プロバイダと残り容量で決まる）
+ */
+function readAttachment_(fileId, inlineOk) {
+  var file = DriveApp.getFileById(fileId);
+  var mime = file.getMimeType();
+  var cap = KL.ATTACH_LIMITS.TEXT_PER_FILE;
+  if (mime === MIME_.GDOC) return { kind: 'text', text: DocumentApp.openById(fileId).getBody().getText().slice(0, cap) };
+  if (mime === MIME_.GSHEET) return { kind: 'text', text: sheetText_(SpreadsheetApp.openById(fileId)).slice(0, cap) };
+  if (mime === MIME_EXTRA_.GSLIDES) return { kind: 'text', text: exportText_(fileId, 'text/plain').slice(0, cap) };
+  if ([MIME_.DOCX, MIME_.DOC, MIME_.XLSX, MIME_.XLS, MIME_EXTRA_.PPTX, MIME_EXTRA_.PPT].indexOf(mime) >= 0) {
+    return { kind: 'text', text: convertAndRead_(file, mime).slice(0, cap) };
+  }
+  if (mime === MIME_EXTRA_.FOLDER) return { kind: 'skip', reason: 'フォルダー' };
+  var blob = file.getBlob();
+  if (/^text\/|json|csv|xml/.test(mime)) return { kind: 'text', text: decodeText_(blob).slice(0, cap) };
+  if (mime === MIME_EXTRA_.PDF || /^image\//.test(mime)) {
+    var size = blob.getBytes().length;
+    if (inlineOk(mime, size)) return { kind: 'inline', mime: mime, data: Utilities.base64Encode(blob.getBytes()), size: size };
+    return { kind: 'text', text: ocrRead_(file).slice(0, cap) };
+  }
+  return { kind: 'skip', reason: '未対応の形式（' + mime + '）' };
+}
+
+function sheetText_(ss) {
+  return ss.getSheets().map(function (sh) {
+    var rows = sh.getDataRange().getValues().map(function (r) { return r.map(nz_).join('\t').replace(/\t+$/, ''); })
+      .filter(function (x) { return x !== ''; });
+    return '# ' + sh.getName() + '\n' + rows.join('\n');
+  }).join('\n\n');
+}
+
+/** Shift_JIS の CSV 等も読めるように */
+function decodeText_(blob) {
+  var t = blob.getDataAsString('UTF-8');
+  if (t.indexOf('�') >= 0) {
+    try { t = blob.getDataAsString('Shift_JIS'); } catch (e) { /* keep */ }
+  }
+  return t;
+}
+
+/** Google 形式のファイルをテキストで書き出す（Drive API v3 export） */
+function exportText_(fileId, mime) {
+  var res = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + fileId + '/export?mimeType=' + encodeURIComponent(mime), {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) throw new Error('テキスト書き出しに失敗 (' + res.getResponseCode() + ')');
+  return res.getContentText();
+}
+
+function requireDriveApi_() {
+  if (typeof Drive === 'undefined') {
+    throw new Error('Word / Excel / PowerPoint の変換と OCR には Drive API（高度なサービス）が必要です。appsscript.json を README の内容に置き換えてください。');
+  }
+}
+
+/** Office ファイルを一時的に Google 形式へ変換して読み、一時ファイルはゴミ箱へ */
+function convertAndRead_(file, mime) {
+  requireDriveApi_();
+  var target = (mime === MIME_.XLSX || mime === MIME_.XLS) ? MIME_.GSHEET
+    : (mime === MIME_EXTRA_.PPTX || mime === MIME_EXTRA_.PPT) ? MIME_EXTRA_.GSLIDES : MIME_.GDOC;
+  var tmp = Drive.Files.create({ name: '_tmp_' + file.getName(), mimeType: target }, file.getBlob(), { supportsAllDrives: true });
+  try {
+    if (target === MIME_.GDOC) return DocumentApp.openById(tmp.id).getBody().getText();
+    if (target === MIME_.GSHEET) return sheetText_(SpreadsheetApp.openById(tmp.id));
+    return exportText_(tmp.id, 'text/plain');
+  } finally {
+    DriveApp.getFileById(tmp.id).setTrashed(true);
+  }
+}
+
+/** PDF・画像を Drive の OCR（日本語）でテキスト化 */
+function ocrRead_(file) {
+  requireDriveApi_();
+  var tmp = Drive.Files.create({ name: '_ocr_' + file.getName(), mimeType: MIME_.GDOC }, file.getBlob(), { ocrLanguage: 'ja', supportsAllDrives: true });
+  try {
+    return DocumentApp.openById(tmp.id).getBody().getText();
+  } finally {
+    DriveApp.getFileById(tmp.id).setTrashed(true);
+  }
+}
+
+/** PDF・画像を AI に直接渡せる形式か（プロバイダ別） */
+function inlineSupported_(provider, mime) {
+  if (mime === MIME_EXTRA_.PDF) return true;
+  if (provider === 'claude') return ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].indexOf(mime) >= 0;
+  return /^image\/(jpeg|png|webp|heic|heif)$/.test(mime);
+}
+
+/**
+ * チェックの付いた添付をまとめて読む。
+ * 戻り値: { parts: [{text} | {inline:{mime,data}}], sources: [ファイル名], errors: [..] }
+ */
+function collectAttachmentParts_(ss, settings) {
+  var provider = (nz_(settings['AIプロバイダ']) || 'gemini').toLowerCase();
+  var items = checkedAttachments_(ss);
+  var parts = [], sources = [], errors = [];
+  var inlineUsed = 0, textUsed = 0;
+  items.forEach(function (it) {
+    try {
+      var r = readAttachment_(it.id, function (mime, size) {
+        if (!inlineSupported_(provider, mime)) return false;
+        if (size > KL.ATTACH_LIMITS.INLINE_PER_FILE || inlineUsed + size > KL.ATTACH_LIMITS.INLINE_TOTAL) return false;
+        inlineUsed += size;
+        return true;
+      });
+      if (r.kind === 'skip') { setAttachStatus_(ss, it.row, '対象外: ' + r.reason); return; }
+      if (r.kind === 'text') {
+        var text = r.text.slice(0, Math.max(KL.ATTACH_LIMITS.TEXT_TOTAL - textUsed, 0));
+        textUsed += text.length;
+        parts.push({ text: '===== 資料: ' + it.name + ' =====\n' + text });
+        setAttachStatus_(ss, it.row, '読み取り済（' + text.length + '字）');
+      } else {
+        parts.push({ text: '===== 資料: ' + it.name + '（次の添付ファイル） =====' });
+        parts.push({ inline: { mime: r.mime, data: r.data } });
+        setAttachStatus_(ss, it.row, 'AI に直接渡す（' + Math.round(r.size / 1024) + 'KB）');
+      }
+      sources.push(it.name);
+    } catch (e) {
+      errors.push(it.name + ': ' + (e.message || e));
+      setAttachStatus_(ss, it.row, 'エラー: ' + (e.message || e));
+    }
+  });
+  return { parts: parts, sources: sources, errors: errors };
+}
+
+// ---------------- アップロード用ダイアログ
+
+function attachDialogHtml_(folderName) {
+  return [
+    '<style>body{font:13px/1.6 sans-serif;margin:12px}h3{margin:14px 0 6px;font-size:14px}textarea{width:100%;height:70px}',
+    '#log{white-space:pre-wrap;background:#f6f6f6;padding:8px;height:130px;overflow:auto;font-size:12px}button{margin-top:6px}</style>',
+    '<div>保存先: <b>' + String(folderName).replace(/[<>&"]/g, '') + '</b></div>',
+    '<h3>PC のファイル</h3><input type="file" id="files" multiple>',
+    '<h3>PC のフォルダー（中身ごと）</h3><input type="file" id="dir" webkitdirectory multiple>',
+    '<div><button onclick="up()">アップロード</button></div>',
+    '<h3>ドライブのファイル / フォルダー（URL か ID、改行区切り）</h3><textarea id="urls"></textarea>',
+    '<div><button onclick="reg()">登録</button> <button onclick="google.script.host.close()">閉じる</button></div>',
+    '<h3>状況</h3><div id="log"></div>',
+    '<script>',
+    'var MAX=' + KL.ATTACH_LIMITS.UPLOAD_PER_FILE + ';',
+    'function log(s){var l=document.getElementById("log");l.textContent+=s+"\\n";l.scrollTop=l.scrollHeight;}',
+    'function read(f){return new Promise(function(ok,ng){var r=new FileReader();r.onload=function(){ok(String(r.result).split(",")[1]||"");};r.onerror=ng;r.readAsDataURL(f);});}',
+    'function call(fn,arg){return new Promise(function(ok,ng){google.script.run.withSuccessHandler(ok).withFailureHandler(ng)[fn](arg);});}',
+    'async function up(){var fs=[].slice.call(document.getElementById("files").files).concat([].slice.call(document.getElementById("dir").files));',
+    ' if(!fs.length){log("ファイルが選ばれていません");return;}',
+    ' for(var i=0;i<fs.length;i++){var f=fs[i];if(f.size>MAX){log("× "+f.name+"（15MB 超。ドライブに置いて URL で登録）");continue;}',
+    '  try{var d=await read(f);var n=await call("uploadAttachment",{name:f.name,mime:f.type,data:d,path:f.webkitRelativePath||""});log("○ "+n);}',
+    '  catch(e){log("× "+f.name+": "+(e&&e.message||e));}}',
+    ' log("完了。「添付資料」シートで取り込む資料を確認してください。");}',
+    'async function reg(){var t=document.getElementById("urls").value;if(!t.trim())return;',
+    ' try{var n=await call("addDriveAttachments",t);log("○ "+n+" 件登録");}catch(e){log("× "+(e&&e.message||e));}}',
+    '</script>'
+  ].join('\n');
+}
+
+
+// ===== 48_Import.js =====
+/**
+ * 添付資料 → AI で読み取り → 入力シートへ反映。
+ *  AI には各シートの見出しをそのままキーにした JSON を返させ、汎用的に書き込む。
+ *  既定は「空欄だけ埋める」。表シートにデータがある場合は触らない（重複を作らない）。
+ */
+
+/** 取り込み用の指示文（純粋関数） */
+function buildImportPrompt_(model) {
+  var L = [];
+  L.push('添付の資料（既存の履歴書・職務経歴書・面談メモ・スキルシート等）から、候補者の情報を読み取り、下の JSON 形式で返してください。');
+  L.push('');
+  L.push('# ルール');
+  L.push('- 資料に書かれていないことは創作しない。分からない値は "" にし、「要確認」に理由を書く');
+  L.push('- 年は西暦4桁、月は数字（和暦は西暦に換算）。生年月日・作成日は YYYY-MM-DD');
+  L.push('- 雇用形態は資料に明記があるときだけ入れる（無ければ "" にして要確認へ）。退社年月が無い会社は在職中として退社年・退社月を ""');
+  L.push('- 会社名は正式名称（株式会社を省略しない）。プロジェクトの「会社名」は職歴の会社名と完全一致させる');
+  L.push('- 支援内容は 1 行 1 項目（改行 \\n 区切り、先頭の「・」は付けない）');
+  L.push('- 経験・能力は 2〜3 件。資料から読める範囲で ミッション / 目標数字 / 課題 / 工夫点 / 結果 を埋める。読めなければ 本文 に要約');
+  L.push('- 職務要約（200〜400字）・自己PR（300〜600字）は資料の事実だけで下書きする');
+  L.push('- 資料間で矛盾がある場合は新しい資料を優先し、要確認に両方の値を書く');
+  L.push('- 推薦書の項目は、面談メモ等に書かれている場合だけ入れる');
+  L.push('');
+  L.push('# JSON 形式（キーは変えない。配列は資料にある件数だけ）');
+  var schema = {};
+  schema[KL.SHEET.BASIC] = keysObject_(KL.BASIC_KEYS.filter(function (k) { return k[0] !== '写真ファイルID' && k[0] !== '作成日'; }));
+  [KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS, KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS].forEach(function (name) {
+    var o = {};
+    KL.HEADERS[name].forEach(function (h) { o[h] = ''; });
+    schema[name] = [o];
+  });
+  schema[KL.SHEET.TEXTS] = keysObject_(KL.TEXT_KEYS);
+  schema[KL.SHEET.SUISEN] = keysObject_(KL.SUISEN_KEYS.filter(function (k) {
+    return ['人物像・面談所感', '転職理由', '現在年収', '希望年収', '入社可能時期', '希望勤務地', '他社選考状況'].indexOf(k[0]) >= 0;
+  }));
+  schema['要確認'] = ['確認が必要な点（1件1文）'];
+  L.push(JSON.stringify(schema, null, 1));
+  L.push('');
+  L.push('# 区分・選択肢');
+  L.push('学歴の区分: ' + KL.VALIDATION[KL.SHEET.EDUCATION].values.join(' / '));
+  L.push('雇用形態: ' + KL.VALIDATION[KL.SHEET.JOBS].values.join(' / '));
+  L.push('免許・資格の区分: ' + KL.VALIDATION[KL.SHEET.LICENSES].values.join(' / ') + '。「履歴書に載せる」は 免許・資格 なら "○"');
+  L.push('実績の区分: ' + KL.VALIDATION[KL.SHEET.ACHIEVEMENTS].values.join(' / '));
+  var name = nz_(model.basic['氏名']);
+  if (name) {
+    L.push('');
+    L.push('# 補足');
+    L.push('この候補者の氏名は「' + name + '」です（資料の氏名と違う場合は要確認に書く）。');
+  }
+  return L.join('\n');
+}
+
+function keysObject_(keys) {
+  var o = {};
+  keys.forEach(function (k) { o[k[0]] = ''; });
+  return o;
+}
+
+/** AI の返答から JSON オブジェクトを取り出す（コードフェンス・前置きに耐える）。失敗したら null */
+function parseJsonObject_(text) {
+  var s = nz_(text);
+  var fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) s = fence[1];
+  var a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a < 0 || b < 0) return null;
+  try { return JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
+}
+
+/** セル値に整形（配列は改行区切り） */
+function cellValue_(v) {
+  if (v === null || v === undefined) return '';
+  if (Array.isArray(v)) return v.map(cellValue_).filter(function (x) { return x !== ''; }).join('\n');
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v).trim();
+}
+
+/**
+ * 読み取り結果をシートへ書く。mode: 'fill'（空欄だけ）| 'overwrite'（置き換え）
+ * 戻り値: { written: 書いたセル数, rows: {シート: 行数}, skipped: [理由] }
+ */
+function applyImport_(ss, data, mode) {
+  var res = { written: 0, rows: {}, skipped: [] };
+  // 項目 / 値 形式
+  [[KL.SHEET.BASIC, KL.BASIC_KEYS], [KL.SHEET.TEXTS, KL.TEXT_KEYS], [KL.SHEET.SUISEN, KL.SUISEN_KEYS]].forEach(function (pair) {
+    var src = data[pair[0]];
+    if (!src || typeof src !== 'object') return;
+    var sh = ss.getSheetByName(pair[0]);
+    if (!sh) return;
+    var allowed = pair[1].map(function (k) { return k[0]; });
+    var defaults = {};
+    pair[1].forEach(function (k) { defaults[k[0]] = k[1]; });
+    var rows = sh.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      var key = nz_(rows[i][0]);
+      if (allowed.indexOf(key) < 0 || !(key in src)) continue;
+      var v = cellValue_(src[key]);
+      if (!v) continue;
+      var cur = nz_(rows[i][1]);
+      if (mode === 'fill' && cur !== '' && cur !== nz_(defaults[key])) continue;
+      sh.getRange(i + 1, 2).setValue(v);
+      res.written++;
+    }
+  });
+  // 表形式
+  [KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS, KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS].forEach(function (name) {
+    var list = data[name];
+    if (!Array.isArray(list)) return;
+    var headers = KL.HEADERS[name];
+    var values = list.filter(function (o) { return o && typeof o === 'object'; })
+      .map(function (o) { return headers.map(function (h) { return cellValue_(o[h]); }); })
+      .filter(function (r) { return r.some(function (x) { return x !== ''; }); });
+    if (values.length === 0) return;
+    var sh = ss.getSheetByName(name);
+    if (!sh) return;
+    var last = sh.getLastRow();
+    if (last >= 2) {
+      if (mode === 'fill') { res.skipped.push(name + '（入力済みのため変更なし）'); return; }
+      sh.getRange(2, 1, last - 1, Math.max(sh.getLastColumn(), headers.length)).clearContent();
+    }
+    sh.getRange(2, 1, values.length, headers.length).setValues(values);
+    res.rows[name] = values.length;
+    res.written += values.length * headers.length;
+  });
+  return res;
+}
+
+/** 取り込み結果シート */
+function writeImportSheet_(ss, sources, errors, data, res) {
+  var sh = ss.getSheetByName(KL.SHEET.IMPORT) || ss.insertSheet(KL.SHEET.IMPORT);
+  sh.clear();
+  var rows = [['区分', '内容']];
+  sources.forEach(function (s) { rows.push(['読み取った資料', s]); });
+  errors.forEach(function (e) { rows.push(['読み取りエラー', e]); });
+  Object.keys(res.rows).forEach(function (k) { rows.push(['反映した行', k + ': ' + res.rows[k] + ' 行']); });
+  res.skipped.forEach(function (s) { rows.push(['反映しなかった', s]); });
+  (Array.isArray(data['要確認']) ? data['要確認'] : []).forEach(function (s) { rows.push(['要確認', cellValue_(s)]); });
+  rows.push(['AI の返答（原文）', JSON.stringify(data, null, 1).slice(0, 45000)]);
+  sh.getRange(1, 1, rows.length, 2).setValues(rows);
+  sh.getRange(1, 1, 1, 2).setFontWeight('bold').setBackground('#e8eaed');
+  sh.setColumnWidth(1, 140).setColumnWidth(2, 700);
+  sh.getRange(1, 2, rows.length, 1).setWrap(true);
+  sh.setFrozenRows(1);
+  return sh;
 }
 
 
@@ -1564,6 +2165,159 @@ function buildRirekishoDoc_(model, ss, folder) {
   wc.getChild(0).asParagraph().editAsText().setFontSize(8).setForegroundColor('#555555');
 
   return finalizeDoc_(doc, folder, model.settings);
+}
+
+
+// ===== 55_Suisen.js =====
+/**
+ * 推薦書（人材紹介の推薦状、A4 縦）
+ *  構成: 宛先・推薦者 → 候補者概要表 → 推薦理由（ポイント）→ 推薦文 → 経歴概要 → 人物像 → 転職理由 → 懸念点と見解 → 結び
+ */
+
+function composeSuisen_(model) {
+  var s = model.suisen || {};
+  var jobs = sortNewestFirst_(model.jobs);
+  var cur = jobs[0];
+  var grads = model.education.filter(function (e) { return /(卒業|修了)/.test(e.kind); })
+    .sort(function (a, b) { return (ymKey_(a.year, a.month) || 0) - (ymKey_(b.year, b.month) || 0); });
+  var lastGrad = grads.length ? grads[grads.length - 1] : null;
+  var date = parseDate_(s['推薦日']) || model.asOf;
+  var career = jobs.map(function (j) {
+    return formatPeriod_(j.startY, j.startM, j.endY, j.endM) + '　' + j.company + (j.position ? '（' + j.position + '）' : '');
+  });
+  return {
+    dateLabel: formatJaDate_(date),
+    to: nz_(s['推薦先企業']),
+    toDept: nz_(s['推薦先部署・ご担当者']),
+    position: nz_(s['推薦ポジション']),
+    from: [nz_(s['推薦者会社']), nz_(s['推薦者部署・役職']), nz_(s['推薦者氏名']), nz_(s['推薦者連絡先'])].filter(function (x) { return x; }),
+    fromName: nz_(s['推薦者氏名']),
+    candidate: nz_(model.basic['氏名']) + (nz_(model.basic['ふりがな']) ? '（' + model.basic['ふりがな'] + '）' : '') + (model.age !== null ? '　' + model.age + '歳' : ''),
+    current: cur ? cur.company + (cur.position ? '（' + cur.position + '）' : '') + (cur.endY === null ? '' : '　※' + formatYm_(cur.endY, cur.endM) + ' 退職') : '',
+    education: lastGrad ? formatYm_(lastGrad.year, lastGrad.month) + '　' + lastGrad.school + ' ' + lastGrad.kind : '',
+    salaryNow: nz_(s['現在年収']), salaryWish: nz_(s['希望年収']),
+    joinable: nz_(s['入社可能時期']), location: nz_(s['希望勤務地']), others: nz_(s['他社選考状況']),
+    points: lines_(s['推薦ポイント']).map(function (x) { return x.replace(/^[・\-•●]\s*/, ''); }),
+    letter: lines_(s['推薦文']),
+    career: career,
+    summary: lines_(model.texts.summary),
+    persona: lines_(s['人物像・面談所感']),
+    reason: lines_(s['転職理由']),
+    concern: lines_(s['懸念点と見解']),
+    licenses: model.licenses.filter(function (l) { return l.onRirekisho; }).map(function (l) { return l.name; })
+  };
+}
+
+/** 推薦書固有のチェック */
+function runSuisenChecks_(model) {
+  var out = [];
+  var s = model.suisen || {};
+  function add(level, item, message) { out.push({ level: level, where: KL.SHEET.SUISEN, item: item, message: message }); }
+  ['推薦先企業', '推薦ポジション', '推薦者会社', '推薦者氏名'].forEach(function (k) { if (!nz_(s[k])) add('ERROR', k, '未入力です。'); });
+  if (!nz_(s['推薦文'])) add('ERROR', '推薦文', '未入力です。「④ 推薦書を AI で下書き」も使えます。');
+  var n = lines_(s['推薦ポイント']).length;
+  if (n === 0) add('WARN', '推薦ポイント', '未入力です。3つが目安。');
+  else if (n > 5) add('WARN', '推薦ポイント', n + '件あります。3〜5件に絞ると伝わりやすくなります。');
+  var c = charCount_(s['推薦文']);
+  if (c && (c < 300 || c > 1000)) add('WARN', '推薦文', c + '字です。400〜800字が目安。');
+  if (nz_(s['推薦文']) && !hasNumber_(s['推薦文'])) add('WARN', '推薦文', '数値の実績がありません。');
+  if (!nz_(s['懸念点と見解'])) add('INFO', '懸念点と見解', '空欄です。短期離職・ブランク・未経験領域などは先回りして見解を書くと通過率が上がります。');
+  if (!nz_(model.basic['氏名'])) add('ERROR', '氏名', '「基本情報」の氏名が未入力です。');
+  return out;
+}
+
+function buildSuisenDoc_(model, ss, folder) {
+  if (nz_(model.settings['推薦書テンプレート'])) return buildFromTemplate_(model, '推薦書', folder);
+  var d = composeSuisen_(model);
+  var font = model.settings['推薦書フォント'] || 'Noto Sans JP';
+  var doc = newA4Doc_(outputFileName_(model, '推薦書'), font, 10.5);
+  var body = doc.getBody();
+  var base = { font: font, size: 10.5 };
+
+  addPara_(body, d.dateLabel, { font: font, size: 10.5, align: 'right' });
+  addPara_(body, d.to + '　御中', { font: font, size: 12, bold: true, before: 6 });
+  if (d.toDept) addPara_(body, d.toDept + '　様', base);
+  d.from.forEach(function (l, i) { addPara_(body, l, { font: font, size: 10.5, align: 'right', before: i === 0 ? 8 : 0 }); });
+  addPara_(body, '推　薦　書', { font: font, size: 18, bold: true, align: 'center', before: 14, after: 10 });
+  addPara_(body, '拝啓　時下ますますご清栄のこととお慶び申し上げます。', base);
+  addPara_(body, '下記の者を貴社「' + d.position + '」に推薦いたします。ご高覧のほど、よろしくお願い申し上げます。', { font: font, size: 10.5, after: 8 });
+
+  // 候補者概要（2 列表、結合なし）
+  var rows = [['候補者', d.candidate], ['推薦ポジション', d.position], ['現職', d.current], ['最終学歴', d.education]];
+  if (d.licenses.length) rows.push(['主な資格', d.licenses.join('、')]);
+  if (d.salaryNow || d.salaryWish) rows.push(['年収', (d.salaryNow ? '現在 ' + d.salaryNow : '') + (d.salaryNow && d.salaryWish ? '　／　' : '') + (d.salaryWish ? '希望 ' + d.salaryWish : '')]);
+  if (d.joinable) rows.push(['入社可能時期', d.joinable]);
+  if (d.location) rows.push(['希望勤務地', d.location]);
+  if (d.others) rows.push(['他社選考状況', d.others]);
+  var t = newTable_(body, rows.length, 2, [110, KL.CONTENT_W - 110], 0.75);
+  rows.forEach(function (r, i) {
+    setCell_(t.getRow(i).getCell(0), r[0], { font: font, size: 9.5, bold: true, bg: '#eef2f7', align: 'center' });
+    setCell_(t.getRow(i).getCell(1), r[1], { font: font, size: 10 });
+  });
+
+  if (d.points.length) {
+    addSectionHeading_(body, '推薦理由', font);
+    d.points.forEach(function (p, i) { addPara_(body, (i + 1) + '. ' + p, { font: font, size: 10.5, bold: true, before: 2 }); });
+  }
+  if (d.letter.length) {
+    addSectionHeading_(body, '推薦文', font);
+    d.letter.forEach(function (l) { addPara_(body, l, base); });
+  }
+  addSectionHeading_(body, '経歴概要', font);
+  (d.summary.length ? d.summary : []).forEach(function (l) { addPara_(body, l, base); });
+  d.career.forEach(function (l, i) { addPara_(body, '・' + l, { font: font, size: 10.5, before: i === 0 && d.summary.length ? 4 : 0 }); });
+  if (d.persona.length) {
+    addSectionHeading_(body, '人物像・面談所感', font);
+    d.persona.forEach(function (l) { addPara_(body, l, base); });
+  }
+  if (d.reason.length) {
+    addSectionHeading_(body, '転職理由', font);
+    d.reason.forEach(function (l) { addPara_(body, l, base); });
+  }
+  if (d.concern.length) {
+    addSectionHeading_(body, '懸念点と見解', font);
+    d.concern.forEach(function (l) { addPara_(body, l, base); });
+  }
+  addPara_(body, '何卒ご検討のほど、よろしくお願い申し上げます。', { font: font, size: 10.5, before: 14 });
+  addPara_(body, '敬具', { font: font, size: 10.5, align: 'right' });
+  addPara_(body, '添付：履歴書、職務経歴書', { font: font, size: 9.5, before: 8, color: '#555555' });
+
+  return finalizeDoc_(doc, folder, model.settings);
+}
+
+/** 推薦書の AI 下書き用プロンプト（提案 JSON を返させ、AI提案シートで確認→反映） */
+function buildSuisenDraftPrompt_(model) {
+  var s = model.suisen || {};
+  var L = [];
+  L.push('あなたは人材紹介会社のキャリアアドバイザーです。以下の候補者情報と面談メモから、企業に提出する推薦書の下書きを作り、JSON のみを返してください。');
+  L.push('');
+  L.push('# 推薦先');
+  L.push('企業: ' + (nz_(s['推薦先企業']) || '（未入力）') + ' / ポジション: ' + (nz_(s['推薦ポジション']) || '（未入力）'));
+  L.push('');
+  L.push('# 書き方');
+  L.push('- 推薦ポイント: 3つ。1行30字以内の見出し。ポジションの要件に結びつく強みを、根拠となる数値実績とセットで');
+  L.push('- 推薦文: 400〜800字。①結論（なぜこのポジションに推薦するか）②根拠となる経験と数値 ③再現性（どういう考え方で成果を出したか）④入社後の貢献イメージ の順。敬体');
+  L.push('- 人物像・面談所感: 150〜300字。面談メモの事実に基づく');
+  L.push('- 懸念点と見解: 企業が気にしそうな点（在籍期間の短さ、未経験領域、年収ギャップ等）と、それに対する見解・根拠。無ければ ""');
+  L.push('- 事実（社名・年月・数値）は入力に無いものを創作しない。足りない数値は「【要確認: 〇〇】」と書く');
+  L.push('');
+  L.push('# 出力 JSON');
+  L.push('{ "review": "推薦の組み立て方の要点（3行）", "proposals": [');
+  L.push('  { "address": "推薦書!推薦ポイント", "current": "", "proposed": "1行1項目で改行 \\n 区切り", "reason": "", "priority": "高" },');
+  L.push('  { "address": "推薦書!推薦文", ... }, { "address": "推薦書!人物像・面談所感", ... }, { "address": "推薦書!懸念点と見解", ... }');
+  L.push('] }');
+  L.push('');
+  L.push('# 面談メモ');
+  L.push(nz_(s['面談メモ']) || '（なし）');
+  L.push('');
+  L.push('# 既存の推薦書入力');
+  ['推薦ポイント', '推薦文', '人物像・面談所感', '転職理由', '懸念点と見解', '現在年収', '希望年収', '入社可能時期'].forEach(function (k) {
+    L.push('[推薦書!' + k + '] ' + (nz_(s[k]) || '（未入力）'));
+  });
+  L.push('');
+  L.push('# 候補者情報');
+  L.push(buildContentDump_(model));
+  return L.join('\n');
 }
 
 
@@ -1861,21 +2615,35 @@ function getApiKey_(provider) {
 }
 
 /** プロンプトを投げてテキストを返す */
-function callAi_(prompt, settings, systemText) {
-  var provider = (nz_(settings['AIプロバイダ']) || 'gemini').toLowerCase();
-  if (provider === 'claude') return callClaude_(prompt, settings, systemText);
-  return callGemini_(prompt, settings, systemText);
+function callAi_(prompt, settings, systemText, opts) {
+  return callAiParts_([{ text: prompt }], settings, systemText, opts);
 }
 
-function callGemini_(prompt, settings, systemText) {
+/**
+ * テキストと添付（PDF・画像の base64）を混ぜて投げる。
+ *  parts: [{ text } | { inline: { mime, data } }]
+ *  opts : { json: true（JSON で返させる）, geminiModelKey: 設定名, maxTokens, effort }
+ */
+function callAiParts_(parts, settings, systemText, opts) {
+  opts = opts || {};
+  var provider = (nz_(settings['AIプロバイダ']) || 'gemini').toLowerCase();
+  if (provider === 'claude') return callClaude_(parts, settings, systemText, opts);
+  return callGemini_(parts, settings, systemText, opts);
+}
+
+function callGemini_(parts, settings, systemText, opts) {
   var key = getApiKey_('gemini');
   if (!key) throw new Error('Gemini の API キーが未設定です。メニュー「APIキーを設定」から登録してください（Google AI Studio で発行）。');
-  var model = nz_(settings['Geminiモデル']) || 'gemini-2.5-pro';
+  var model = nz_(settings[opts.geminiModelKey || 'Geminiモデル']) || nz_(settings['Geminiモデル']) || 'gemini-2.5-pro';
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
+  var gc = { temperature: 0.2, maxOutputTokens: opts.maxTokens || 8192 };
+  if (opts.json) gc.responseMimeType = 'application/json';
   var payload = {
     system_instruction: { parts: [{ text: systemText }] },
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
+    contents: [{ role: 'user', parts: parts.map(function (p) {
+      return p.inline ? { inline_data: { mime_type: p.inline.mime, data: p.inline.data } } : { text: p.text };
+    }) }],
+    generationConfig: gc
   };
   var res = UrlFetchApp.fetch(url, {
     method: 'post', contentType: 'application/json',
@@ -1891,22 +2659,29 @@ function callGemini_(prompt, settings, systemText) {
   var json = JSON.parse(text);
   var cand = (json.candidates || [])[0];
   if (!cand || !cand.content) throw new Error('Gemini から回答が得られませんでした' + (json.promptFeedback ? '（' + JSON.stringify(json.promptFeedback) + '）' : '') + '。');
-  return (cand.content.parts || []).map(function (p) { return p.text || ''; }).join('');
+  var out = (cand.content.parts || []).map(function (p) { return p.text || ''; }).join('');
+  if (cand.finishReason === 'MAX_TOKENS') out += '\n（注: 出力が上限に達したため途中で切れています）';
+  return out;
 }
 
-function callClaude_(prompt, settings, systemText) {
+function callClaude_(parts, settings, systemText, opts) {
   var key = getApiKey_('claude');
   if (!key) throw new Error('Claude の API キーが未設定です。メニュー「APIキーを設定」から登録してください。');
   var model = nz_(settings['Claudeモデル']) || 'claude-opus-5';
-  var effort = nz_(settings['AI思考の深さ']) || 'medium';
+  var effort = opts.effort || nz_(settings['AI思考の深さ']) || 'medium';
   if (['low', 'medium', 'high'].indexOf(effort) < 0) effort = 'medium';
+  var content = parts.map(function (p) {
+    if (!p.inline) return { type: 'text', text: p.text };
+    if (p.inline.mime === 'application/pdf') return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: p.inline.data } };
+    return { type: 'image', source: { type: 'base64', media_type: p.inline.mime, data: p.inline.data } };
+  });
   var payload = {
     model: model,
-    max_tokens: 8000,
+    max_tokens: opts.maxTokens || 8000,
     fallbacks: 'default',
     output_config: { effort: effort },
-    system: systemText,
-    messages: [{ role: 'user', content: prompt }]
+    system: systemText + (opts.json ? '\n回答は JSON オブジェクトのみ。前後に説明文やコードフェンスを付けない。' : ''),
+    messages: [{ role: 'user', content: content }]
   };
   var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
     method: 'post', contentType: 'application/json',
@@ -1955,10 +2730,8 @@ function parseAddress_(address) {
   if (parts.length < 2) return null;
   var sheet = parts[0];
   // AI が書き換えてよいのは入力シートだけ（設定・チェック結果などは不可）
-  var allowed = [KL.SHEET.BASIC, KL.SHEET.TEXTS, KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS,
-    KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS];
-  if (allowed.indexOf(sheet) < 0) return null;
-  var isKv = (sheet === KL.SHEET.BASIC || sheet === KL.SHEET.TEXTS);
+  if (KL.AI_WRITABLE.indexOf(sheet) < 0) return null;
+  var isKv = KL.KV_SHEETS.indexOf(sheet) >= 0;
   if (isKv) return { sheet: sheet, key: parts[1] };
   var m = parts[1].match(/^行\s*(\d+)$/);
   if (!m) return null;
@@ -2048,11 +2821,13 @@ function writeAiSheet_(ss, prompt, result) {
 
 function setupSheets_(ss, withSample) {
   var order = [KL.SHEET.BASIC, KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS, KL.SHEET.SKILLS,
-    KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS, KL.SHEET.TEXTS, KL.SHEET.SETTINGS];
+    KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS, KL.SHEET.TEXTS, KL.SHEET.SUISEN, KL.SHEET.ATTACH, KL.SHEET.SETTINGS];
 
   setupKeyValueSheet_(ss, KL.SHEET.BASIC, KL.BASIC_KEYS, withSample ? sampleBasic_() : null);
   setupKeyValueSheet_(ss, KL.SHEET.TEXTS, KL.TEXT_KEYS, withSample ? sampleTexts_() : null);
+  setupKeyValueSheet_(ss, KL.SHEET.SUISEN, KL.SUISEN_KEYS, withSample ? sampleSuisen_() : null);
   setupKeyValueSheet_(ss, KL.SHEET.SETTINGS, KL.SETTING_KEYS, null);
+  attachSheet_(ss);
 
   var samples = withSample ? sampleTables_() : {};
   [KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS, KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS]
@@ -2153,6 +2928,28 @@ function sampleBasic_() {
   };
 }
 
+function sampleSuisen_() {
+  return {
+    '推薦先企業': '株式会社サンプルコンサルティング',
+    '推薦先部署・ご担当者': '人事部 採用ご担当者',
+    '推薦ポジション': 'DXコンサルタント（医療・ヘルスケア領域）',
+    '推薦者会社': 'サンプル人材株式会社',
+    '推薦者部署・役職': 'キャリアアドバイザー',
+    '推薦者氏名': '佐藤 花子',
+    '推薦者連絡先': '03-0000-0000 / sato@example.com',
+    '推薦ポイント': '医療現場の業務を分解し、待ち時間60%削減を実現した業務改善力\n4店舗横断でAI活用を定着させた推進力\n現場と経営の双方を理解した上での業務設計',
+    '推薦文': '田中様は、調剤薬局の薬剤師として現場業務に従事しながら、業務改善・DX推進担当として成果を上げてこられた方です。\n待ち時間の原因を業務量ではなく現場の優先順位判断のばらつきにあると仮説を立て、業務を週・日単位に分解して「今やらなくてよい業務」を明示することで、平均20分の待ち時間を8分（60%削減）に短縮されました。\nまた、AI活用では情報整理と候補提示をAI、最終判断を人が担う形で業務を再設計し、4店舗で月1回の講座を開催して定着まで伴走されています。\n医療現場の業務構造を理解し、仮説→実行→検証を回し切る姿勢は、貴社の医療・ヘルスケア領域のDX支援において即戦力として活躍いただけるものと考え、推薦いたします。',
+    '人物像・面談所感': '論理的かつ誠実なお人柄で、質問に対して結論から簡潔に回答されます。現場の声を丁寧に拾いながらも、構造で課題を捉える視点をお持ちです。',
+    '転職理由': '一店舗・一法人の改善にとどまらず、より多くの医療機関の業務変革に携わりたいため。',
+    '懸念点と見解': '1社目の在籍が3ヶ月と短期ですが、調剤未経験から専門性を高める目的での転職であり、現職では2年以上継続して成果を上げていることから、定着性に懸念はないと考えます。',
+    '現在年収': '462万円',
+    '希望年収': '600万円（最低 550万円）',
+    '入社可能時期': '内定後 3ヶ月',
+    '希望勤務地': '東京',
+    '面談メモ': ''
+  };
+}
+
 function sampleTexts_() {
   return {
     '職務要約': 'サンプル大学薬学部を卒業後、株式会社サンプルドラッグにてOTC医薬品販売に従事し、現職の株式会社サンプル薬局に入社。薬剤師として調剤・服薬指導・在宅対応に従事する傍ら、業務改善・DX推進担当として業務設計の見直しを主導。\n調剤待ち時間を平均20分から8分（60%削減）に短縮し、紙カレンダー4種で運用していたタスク管理をGoogleカレンダーに一元化した。2025年9月以降は複数店舗（4店舗）を横断して社内AI活用の企画・講座運営を担当している。',
@@ -2224,17 +3021,23 @@ function sampleTables_() {
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
   ui.createMenu(KL.MENU_TITLE)
+    .addItem('⓪ 新規候補者を作成（〇〇様フォルダー＋入力シート）', 'menuNewCandidate')
+    .addSeparator()
     .addItem('① 初期セットアップ（シート作成・サンプル投入）', 'menuSetupWithSample')
     .addItem('　 初期セットアップ（サンプルなし）', 'menuSetupEmpty')
     .addSeparator()
+    .addItem('② 添付資料を追加（PC / ドライブ）', 'menuAttach')
+    .addItem('② 添付資料から入力シートを作成（AI）', 'menuImport')
     .addItem('② 入力チェック', 'menuCheck')
     .addSeparator()
     .addItem('③ 履歴書を生成', 'menuBuildRirekisho')
     .addItem('③ 職務経歴書を生成', 'menuBuildShokumu')
-    .addItem('③ 両方を生成', 'menuBuildBoth')
+    .addItem('③ 推薦書を生成', 'menuBuildSuisen')
+    .addItem('③ 3 点すべて生成', 'menuBuildAll')
     .addSeparator()
     .addSubMenu(ui.createMenu('④ AI 分析（Gemini / Claude）')
       .addItem('分析して提案を作る', 'menuAiAnalyze')
+      .addItem('推薦書を AI で下書き', 'menuSuisenDraft')
       .addItem('チェックした提案を反映', 'menuApplyProposals')
       .addItem('添削プロンプトだけ作る（Gemini に貼る）', 'menuAiPrompt')
       .addItem('APIキーを設定', 'menuSetApiKey'))
@@ -2294,8 +3097,9 @@ function writeCheckSheet_(ss, results) {
   ss.setActiveSheet(sh);
 }
 
-function guardErrors_(ss, model) {
+function guardErrors_(ss, model, kinds) {
   var results = runChecks(model);
+  if (kinds && kinds.indexOf('推薦書') >= 0) results = results.concat(runSuisenChecks_(model));
   var c = summarizeChecks_(results);
   if (c.ERROR > 0) {
     writeCheckSheet_(ss, results);
@@ -2308,30 +3112,118 @@ function guardErrors_(ss, model) {
   return true;
 }
 
-function menuBuildRirekisho() { buildAndNotify_(true, false); }
-function menuBuildShokumu() { buildAndNotify_(false, true); }
-function menuBuildBoth() { buildAndNotify_(true, true); }
+function menuBuildRirekisho() { buildAndNotify_(['履歴書']); }
+function menuBuildShokumu() { buildAndNotify_(['職務経歴書']); }
+function menuBuildBoth() { buildAndNotify_(['履歴書', '職務経歴書']); }
+function menuBuildSuisen() { buildAndNotify_(['推薦書']); }
+function menuBuildAll() { buildAndNotify_(['履歴書', '職務経歴書', '推薦書']); }
 
-function buildAndNotify_(doRireki, doShokumu) {
+function buildAndNotify_(kinds) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var ui = SpreadsheetApp.getUi();
   var model = loadModel(ss);
-  if (!guardErrors_(ss, model)) return;
+  if (!guardErrors_(ss, model, kinds)) return;
+  var builders = { '履歴書': buildRirekishoDoc_, '職務経歴書': buildShokumuDoc_, '推薦書': buildSuisenDoc_ };
   try {
-    var folder = chooseOutputFolder_(ss, model.settings, ui);
+    var folder = chooseOutputFolder_(ss, model.settings, ui, nz_(model.basic['氏名']));
     if (!folder) return;
     var msg = ['保存先: ' + folder.getName() + '\n' + folder.getUrl()];
-    if (doRireki) {
-      var r = buildRirekishoDoc_(model, ss, folder);
-      msg.push('履歴書:\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : ''));
-    }
-    if (doShokumu) {
-      var s = buildShokumuDoc_(model, ss, folder);
-      msg.push('職務経歴書:\n' + s.docUrl + (s.pdfUrl ? '\nPDF: ' + s.pdfUrl : ''));
-    }
+    kinds.forEach(function (k) {
+      var r = builders[k](model, ss, folder);
+      msg.push(k + ':\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : ''));
+    });
     ui.alert('生成完了', msg.join('\n\n'), ui.ButtonSet.OK);
   } catch (e) {
     ui.alert('生成できませんでした', String(e.message || e), ui.ButtonSet.OK);
+  }
+}
+
+// ---------------- 新規作成・添付・取り込み
+
+function menuNewCandidate() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var nameRes = ui.prompt('新規候補者を作成', '候補者の氏名を入力してください（例: 山田 花子）。', ui.ButtonSet.OK_CANCEL);
+  if (nameRes.getSelectedButton() !== ui.Button.OK) return;
+  var name = nz_(nameRes.getResponseText());
+  if (!name) { ui.alert('氏名が空です。'); return; }
+  try {
+    var settings = loadModel(ss).settings;
+    // 「〇〇様」フォルダーを作る場所。候補者シートの保存先（〇〇様フォルダー自体）は親として使わない
+    var parent = chooseParentFolder_(ss, withoutCandidateFolder_(settings), ui, { alwaysAsk: true, title: '「' + candidateFolderName_(settings, name) + '」フォルダーを作る場所', lead: 'この中に「' + candidateFolderName_(settings, name) + '」フォルダーを作ります。' });
+    if (!parent) return;
+    var r = createCandidate_(ss, name, parent);
+    ui.alert(r.reused ? '既にあります' : '作成しました',
+      '「' + r.folder.getName() + '」フォルダー:\n' + r.folder.getUrl() + '\n\n' +
+      '入力シート:\n' + r.ssUrl + '\n\n' +
+      '入力シートを開き、「② 添付資料を追加」→「② 添付資料から入力シートを作成（AI）」→「③ 3 点すべて生成」の順に進めてください。\n' +
+      '（複製したシートではスクリプトの承認をもう一度求められます）',
+      ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('作成できませんでした', String(e.message || e), ui.ButtonSet.OK);
+  }
+}
+
+/** 出力フォルダが「〇〇様」フォルダー（候補者用シート）なら、その親を既定にする */
+function withoutCandidateFolder_(settings) {
+  var copy = {};
+  Object.keys(settings).forEach(function (k) { copy[k] = settings[k]; });
+  var f = resolveFolder_(settings['出力フォルダ']);
+  if (f && /様$/.test(f.getName())) {
+    var ps = f.getParents();
+    copy['出力フォルダ'] = ps.hasNext() ? ps.next().getId() : '';
+  }
+  return copy;
+}
+
+function menuAttach() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  try {
+    var folder = ensureAttachFolder_(ss, loadModel(ss), ui);
+    if (!folder) return;
+    attachSheet_(ss);
+    var html = HtmlService.createHtmlOutput(attachDialogHtml_(folder.getName())).setWidth(560).setHeight(600);
+    ui.showModalDialog(html, '添付資料を追加');
+  } catch (e) {
+    ui.alert('添付できません', String(e.message || e), ui.ButtonSet.OK);
+  }
+}
+
+function menuImport() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var model = loadModel(ss);
+  if (checkedAttachments_(ss).length === 0) {
+    ui.alert('取り込む資料がありません', '「② 添付資料を追加」で資料を登録し、「添付資料」シートの「取り込む」にチェックを付けてください。', ui.ButtonSet.OK);
+    return;
+  }
+  var ans = ui.alert('取り込み方法',
+    'はい → 空欄だけ埋める（入力済みの値・行は変えない。推奨）\nいいえ → 読み取った内容で置き換える',
+    ui.ButtonSet.YES_NO_CANCEL);
+  if (ans !== ui.Button.YES && ans !== ui.Button.NO) return;
+  var mode = ans === ui.Button.YES ? 'fill' : 'overwrite';
+  try {
+    var col = collectAttachmentParts_(ss, model.settings);
+    if (col.parts.length === 0) throw new Error('読み取れた資料がありません。' + col.errors.join(' / '));
+    var parts = [{ text: buildImportPrompt_(model) }].concat(col.parts);
+    var raw = callAiParts_(parts, model.settings, KL.AI_SYSTEM, { json: true, geminiModelKey: 'Gemini抽出モデル', maxTokens: 16000, effort: 'low' });
+    var data = parseJsonObject_(raw);
+    if (!data) throw new Error('AI の返答を読み取れませんでした。もう一度実行するか、資料を減らしてください。');
+    var res = applyImport_(ss, data, mode);
+    var sh = writeImportSheet_(ss, col.sources, col.errors, data, res);
+    ss.setActiveSheet(sh);
+    var checks = summarizeChecks_(runChecks(loadModel(ss)));
+    ui.alert('取り込み完了',
+      col.sources.length + ' 件の資料から読み取りました。\n' +
+      Object.keys(res.rows).map(function (k) { return k + ': ' + res.rows[k] + ' 行'; }).join('\n') +
+      (res.skipped.length ? '\n変更しなかったシート: ' + res.skipped.join('、') : '') + '\n\n' +
+      '要確認: ' + (Array.isArray(data['要確認']) ? data['要確認'].length : 0) + ' 件（「取り込み結果」シート）\n' +
+      '入力チェック: エラー ' + checks.ERROR + ' / 注意 ' + checks.WARN + '\n\n' +
+      'AI の読み取りには誤りがあり得ます。特に年月・雇用形態・数値は原本と照合してください。',
+      ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('取り込みできませんでした', String(e.message || e), ui.ButtonSet.OK);
   }
 }
 
@@ -2367,6 +3259,23 @@ function menuAiAnalyze() {
   } catch (e) {
     writeAiSheet_(ss, buildReviewPrompt_(model), '');
     ui.alert('AI 分析 失敗', String(e.message || e) + '\n\n外部 API が使えない環境では「添削プロンプトだけ作る」を使い、Gemini に貼り付けてください。', ui.ButtonSet.OK);
+  }
+}
+
+function menuSuisenDraft() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var model = loadModel(ss);
+  try {
+    var raw = callAi_(buildSuisenDraftPrompt_(model), model.settings, KL.AI_SYSTEM);
+    var parsed = parseAnalysis_(raw);
+    var sh = writeProposalSheet_(ss, parsed.review, parsed.proposals);
+    ss.setActiveSheet(sh);
+    ui.alert('推薦書の下書き 完了',
+      '「AI提案」シートに ' + parsed.proposals.length + ' 件の下書きを書き出しました。\n採用する行にチェックを付けて「チェックした提案を反映」を実行してください。',
+      ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('下書きできませんでした', String(e.message || e), ui.ButtonSet.OK);
   }
 }
 
@@ -2466,13 +3375,17 @@ function menuTokenList() {
 function menuHelp() {
   SpreadsheetApp.getUi().alert('使い方 (v' + KL.VERSION + ')',
     '【流れ】\n' +
-    '① 初期セットアップ → ② 各シートに入力 → ② 入力チェック → ③ 生成 → ④ AI 分析で提案を反映 → 再生成\n\n' +
+    '⓪ 新規候補者を作成（〇〇様フォルダー＋入力シート）→ 作られた入力シートを開く\n' +
+    '② 添付資料を追加 → ② 添付資料から入力シートを作成（AI）→ ② 入力チェック\n' +
+    '③ 3 点すべて生成 → ④ AI 分析・推薦書の下書きで提案を反映 → 再生成\n\n' +
     '【シート】\n' +
     '基本情報: 履歴書の氏名・住所など\n' +
     '学歴 / 職歴: 両方の書類に使う。年は西暦4桁\n' +
     'プロジェクト: 職務経歴書の詳細。会社名は職歴と完全一致\n' +
     '経験・能力: 本文を書くか、5要素（ミッション→目標数字→課題→工夫点→結果）を埋める\n' +
     '免許・資格 / 実績 / 文章（職務要約・自己PR）\n' +
+    '推薦書: 推薦先・推薦者・推薦ポイント・推薦文・面談メモ\n' +
+    '添付資料: 読み取る資料の一覧（「取り込む」にチェック）\n' +
     '設定: 保存先・ファイル名パターン・テンプレート・PDF・AI\n\n' +
     '【出力】\n' +
     '生成時に保存先フォルダを聞きます（設定に書けば省略）。ファイル名は「氏名様_履歴書」形式。\n' +

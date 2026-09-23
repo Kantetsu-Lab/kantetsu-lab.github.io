@@ -101,21 +101,35 @@ function getApiKey_(provider) {
 }
 
 /** プロンプトを投げてテキストを返す */
-function callAi_(prompt, settings, systemText) {
-  var provider = (nz_(settings['AIプロバイダ']) || 'gemini').toLowerCase();
-  if (provider === 'claude') return callClaude_(prompt, settings, systemText);
-  return callGemini_(prompt, settings, systemText);
+function callAi_(prompt, settings, systemText, opts) {
+  return callAiParts_([{ text: prompt }], settings, systemText, opts);
 }
 
-function callGemini_(prompt, settings, systemText) {
+/**
+ * テキストと添付（PDF・画像の base64）を混ぜて投げる。
+ *  parts: [{ text } | { inline: { mime, data } }]
+ *  opts : { json: true（JSON で返させる）, geminiModelKey: 設定名, maxTokens, effort }
+ */
+function callAiParts_(parts, settings, systemText, opts) {
+  opts = opts || {};
+  var provider = (nz_(settings['AIプロバイダ']) || 'gemini').toLowerCase();
+  if (provider === 'claude') return callClaude_(parts, settings, systemText, opts);
+  return callGemini_(parts, settings, systemText, opts);
+}
+
+function callGemini_(parts, settings, systemText, opts) {
   var key = getApiKey_('gemini');
   if (!key) throw new Error('Gemini の API キーが未設定です。メニュー「APIキーを設定」から登録してください（Google AI Studio で発行）。');
-  var model = nz_(settings['Geminiモデル']) || 'gemini-2.5-pro';
+  var model = nz_(settings[opts.geminiModelKey || 'Geminiモデル']) || nz_(settings['Geminiモデル']) || 'gemini-2.5-pro';
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
+  var gc = { temperature: 0.2, maxOutputTokens: opts.maxTokens || 8192 };
+  if (opts.json) gc.responseMimeType = 'application/json';
   var payload = {
     system_instruction: { parts: [{ text: systemText }] },
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
+    contents: [{ role: 'user', parts: parts.map(function (p) {
+      return p.inline ? { inline_data: { mime_type: p.inline.mime, data: p.inline.data } } : { text: p.text };
+    }) }],
+    generationConfig: gc
   };
   var res = UrlFetchApp.fetch(url, {
     method: 'post', contentType: 'application/json',
@@ -131,22 +145,29 @@ function callGemini_(prompt, settings, systemText) {
   var json = JSON.parse(text);
   var cand = (json.candidates || [])[0];
   if (!cand || !cand.content) throw new Error('Gemini から回答が得られませんでした' + (json.promptFeedback ? '（' + JSON.stringify(json.promptFeedback) + '）' : '') + '。');
-  return (cand.content.parts || []).map(function (p) { return p.text || ''; }).join('');
+  var out = (cand.content.parts || []).map(function (p) { return p.text || ''; }).join('');
+  if (cand.finishReason === 'MAX_TOKENS') out += '\n（注: 出力が上限に達したため途中で切れています）';
+  return out;
 }
 
-function callClaude_(prompt, settings, systemText) {
+function callClaude_(parts, settings, systemText, opts) {
   var key = getApiKey_('claude');
   if (!key) throw new Error('Claude の API キーが未設定です。メニュー「APIキーを設定」から登録してください。');
   var model = nz_(settings['Claudeモデル']) || 'claude-opus-5';
-  var effort = nz_(settings['AI思考の深さ']) || 'medium';
+  var effort = opts.effort || nz_(settings['AI思考の深さ']) || 'medium';
   if (['low', 'medium', 'high'].indexOf(effort) < 0) effort = 'medium';
+  var content = parts.map(function (p) {
+    if (!p.inline) return { type: 'text', text: p.text };
+    if (p.inline.mime === 'application/pdf') return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: p.inline.data } };
+    return { type: 'image', source: { type: 'base64', media_type: p.inline.mime, data: p.inline.data } };
+  });
   var payload = {
     model: model,
-    max_tokens: 8000,
+    max_tokens: opts.maxTokens || 8000,
     fallbacks: 'default',
     output_config: { effort: effort },
-    system: systemText,
-    messages: [{ role: 'user', content: prompt }]
+    system: systemText + (opts.json ? '\n回答は JSON オブジェクトのみ。前後に説明文やコードフェンスを付けない。' : ''),
+    messages: [{ role: 'user', content: content }]
   };
   var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
     method: 'post', contentType: 'application/json',
@@ -195,10 +216,8 @@ function parseAddress_(address) {
   if (parts.length < 2) return null;
   var sheet = parts[0];
   // AI が書き換えてよいのは入力シートだけ（設定・チェック結果などは不可）
-  var allowed = [KL.SHEET.BASIC, KL.SHEET.TEXTS, KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS,
-    KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS];
-  if (allowed.indexOf(sheet) < 0) return null;
-  var isKv = (sheet === KL.SHEET.BASIC || sheet === KL.SHEET.TEXTS);
+  if (KL.AI_WRITABLE.indexOf(sheet) < 0) return null;
+  var isKv = KL.KV_SHEETS.indexOf(sheet) >= 0;
   if (isKv) return { sheet: sheet, key: parts[1] };
   var m = parts[1].match(/^行\s*(\d+)$/);
   if (!m) return null;

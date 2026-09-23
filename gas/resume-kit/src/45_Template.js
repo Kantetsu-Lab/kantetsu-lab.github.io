@@ -48,6 +48,14 @@ function buildTokenValues_(model) {
     '実績': s.achievementGroups.map(function (g) { return g.items.map(function (it) { return '・' + it + '（' + g.title + '）'; }).join('\n'); }).join('\n'),
     '資格一覧': s.licenseGroups.map(function (g) { return g.items.map(function (it) { return '・' + it; }).join('\n'); }).join('\n')
   };
+  var su = composeSuisen_(model);
+  var sv = model.suisen || {};
+  single['推薦先企業'] = su.to; single['推薦先部署'] = su.toDept; single['推薦ポジション'] = su.position; single['推薦日'] = su.dateLabel;
+  single['推薦者会社'] = nz_(sv['推薦者会社']); single['推薦者部署'] = nz_(sv['推薦者部署・役職']); single['推薦者氏名'] = nz_(sv['推薦者氏名']); single['推薦者連絡先'] = nz_(sv['推薦者連絡先']);
+  single['推薦ポイント'] = su.points.map(function (p) { return '・' + p; }).join('\n');
+  single['推薦文'] = su.letter.join('\n'); single['人物像'] = su.persona.join('\n'); single['転職理由'] = su.reason.join('\n'); single['懸念点'] = su.concern.join('\n');
+  single['現在年収'] = su.salaryNow; single['希望年収'] = su.salaryWish; single['入社可能時期'] = su.joinable; single['希望勤務地'] = su.location; single['他社選考状況'] = su.others;
+  single['現職'] = su.current; single['最終学歴'] = su.education;
   var hist = r.historyRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text]; });
   var eduRows = [], jobRows = [], mode = '';
   hist.forEach(function (row) {
@@ -302,9 +310,10 @@ function classifyTokens_(text) {
     });
     if (singles.indexOf(t) >= 0 || isList) known.push(t); else unknown.push(t);
   });
-  var essential = ['氏名', '生年月日', '現住所'];
+  var isSuisen = !!(found['推薦文'] || found['推薦ポイント'] || found['推薦ポジション']);
+  var essential = isSuisen ? ['氏名', '推薦文'] : ['氏名', '生年月日', '現住所'];
   var missing = essential.filter(function (e) { return !found[e] && !found[e + '_年']; });
-  if (!Object.keys(found).some(function (t) { return /^(学歴職歴|学歴|職歴)_/.test(t); }) && !found['職務経歴詳細']) missing.push('学歴職歴_内容（または 学歴_内容 / 職歴_内容 / 職務経歴詳細）');
+  if (!isSuisen && !Object.keys(found).some(function (t) { return /^(学歴職歴|学歴|職歴)_/.test(t); }) && !found['職務経歴詳細']) missing.push('学歴職歴_内容（または 学歴_内容 / 職歴_内容 / 職務経歴詳細）');
   return { known: known.sort(), unknown: unknown.sort(), missing: missing };
 }
 
@@ -350,7 +359,7 @@ function resolveLabelToken_(label, below, used) {
 
 /** 右隣が埋まっているとき、直下や同じセルに入れてよい「文章欄」のトークン */
 function isBlockToken_(t) {
-  return ['{{志望動機}}', '{{本人希望}}', '{{職務要約}}', '{{自己PR}}', '{{経験能力}}', '{{職務経歴詳細}}'].indexOf(t) >= 0;
+  return ['{{志望動機}}', '{{本人希望}}', '{{職務要約}}', '{{自己PR}}', '{{経験能力}}', '{{職務経歴詳細}}', '{{推薦ポイント}}', '{{推薦文}}', '{{人物像}}', '{{転職理由}}', '{{懸念点}}'].indexOf(t) >= 0;
 }
 
 /** リスト系トークン {{学歴職歴_内容}} → 名前 */

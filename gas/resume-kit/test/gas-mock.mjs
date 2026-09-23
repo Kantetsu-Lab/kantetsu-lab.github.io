@@ -106,9 +106,20 @@ export function createGas() {
     return {
       getId: () => f.id, getName: () => f.name, getUrl: () => 'https://drive.google.com/drive/folders/' + f.id,
       getFoldersByName: (n) => iter([...folders.values()].filter((x) => x.parent === f.id && x.name === n).map(folderApi)),
+      getFolders: () => iter([...folders.values()].filter((x) => x.parent === f.id).map(folderApi)),
+      getFiles: () => iter([...files.values()].filter((x) => x.folder === f.id && !x.trashed).map(fileApi)),
+      getParents: () => iter(f.parent ? [folderApi(folders.get(f.parent))] : []),
       createFolder: (n) => folderApi(mkFolder(n, f.id)),
       getFilesByName: (n) => iter([...files.values()].filter((x) => x.folder === f.id && x.name === n && !x.trashed).map(fileApi)),
-      createFile: (blob) => fileApi(addFile({ name: blob.name, mime: blob.mime, folder: f.id })),
+      createFile: (blob) => fileApi(addFile({ name: blob.name, mime: blob.mime, folder: f.id, bytes: blob.bytes || [], text: blob.text })),
+    };
+  }
+  function makeBlob(bytes, mime, name, src) {
+    const buf = Buffer.from(bytes);
+    return {
+      name, mime, bytes: [...buf], src,
+      getBytes: () => [...buf], getContentType: () => mime, getName: () => name,
+      getDataAsString: (cs) => (cs && cs !== 'UTF-8' ? '[' + cs + ']' : '') + buf.toString('utf8'),
     };
   }
   function addFile(rec) { rec.id = rec.id || newId('D'); files.set(rec.id, rec); return rec; }
@@ -118,7 +129,7 @@ export function createGas() {
       moveTo: (folder) => { r.folder = folder.getId(); return fileApi(r); },
       getParents: () => iter(r.folder ? [folderApi(folders.get(r.folder))] : []),
       setTrashed: (v) => { r.trashed = v; return fileApi(r); },
-      getBlob: () => ({ name: r.name, mime: r.mime }),
+      getBlob: () => makeBlob(r.bytes || Buffer.from(r.text || '', 'utf8'), r.mime, r.name, r),
       getAs: (mime) => { const b = { name: r.name, mime }; b.setName = (n) => { b.name = n; return b; }; return b; },
       makeCopy: (name, folder) => {
         const c = { name, mime: r.mime, folder: folder.getId() };
@@ -170,6 +181,7 @@ export function createGas() {
         vals.forEach((row, i) => row.forEach((v, j) => put(sh, r + i, c + j, v))); return api;
       },
       setNote: (n) => { sh.notes[`${r},${c}`] = n; return api; },
+      clearContent: () => { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) if (get(sh, r + i, c + j) !== '') put(sh, r + i, c + j, ''); return api; },
       insertCheckboxes: () => { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) if (get(sh, r + i, c + j) === '') put(sh, r + i, c + j, false); return api; },
     };
     return chain(api, ['setFontWeight', 'setBackground', 'setFontColor', 'setWrap', 'setVerticalAlignment', 'setNumberFormat', 'setDataValidation']);
@@ -228,11 +240,12 @@ export function createGas() {
     return ssApi(s);
   }
   let active = null;
-  const uiQueue = { prompts: [], alerts: [], shown: [] };
+  const uiQueue = { prompts: [], alerts: [], shown: [], dialogs: [] };
   const Button = { OK: 'OK', CANCEL: 'CANCEL', YES: 'YES', NO: 'NO', CLOSE: 'CLOSE' };
   const ui = {
     Button, ButtonSet: { OK: 'OK', OK_CANCEL: 'OK_CANCEL', YES_NO: 'YES_NO', YES_NO_CANCEL: 'YES_NO_CANCEL' },
     alert: (...a) => { uiQueue.shown.push(a.slice(0, 2).join(' | ')); return uiQueue.alerts.length ? uiQueue.alerts.shift() : Button.OK; },
+    showModalDialog: (html, title) => { uiQueue.shown.push('DIALOG ' + title); uiQueue.dialogs.push(html); },
     prompt: (...a) => { uiQueue.shown.push('PROMPT ' + a[0]); const v = uiQueue.prompts.length ? uiQueue.prompts.shift() : ''; return { getSelectedButton: () => (v === null ? Button.CANCEL : Button.OK), getResponseText: () => v ?? '' }; },
   };
   const SpreadsheetApp = {
@@ -252,8 +265,40 @@ export function createGas() {
   let fetchHandler = () => ({ code: 500, body: '{}' });
   const UrlFetchApp = { fetch: (url, opt) => { fetchLog.push({ url, opt }); const r = fetchHandler(url, opt); return { getResponseCode: () => r.code, getContentText: () => r.body }; } };
 
+  const HtmlService = { createHtmlOutput: (h) => { const o = { html: h }; o.setWidth = () => o; o.setHeight = () => o; return o; } };
+  const Utilities = {
+    base64Decode: (s) => [...Buffer.from(s, 'base64')],
+    base64Encode: (bytes) => Buffer.from(bytes).toString('base64'),
+    newBlob: (bytes, mime, name) => ({ bytes, mime, name }),
+  };
+  const ScriptApp = { getOAuthToken: () => 'oauth-token' };
+  // Drive 高度なサービス: 変換・OCR。変換後の本文は元ファイルの convertText（テスト側で設定）を使う
+  const converted = [];
+  const Drive = {
+    Files: {
+      create: (meta, blob, opt) => {
+        const src = blob.src || {};
+        converted.push({ meta, opt, from: src.name });
+        if (meta.mimeType === 'application/vnd.google-apps.document') {
+          const id = DocumentApp.create(meta.name).getId();
+          files.get(id).doc.body.appendParagraph(src.convertText || '');
+          return { id };
+        }
+        if (meta.mimeType === 'application/vnd.google-apps.spreadsheet') {
+          const ss = createSpreadsheet(meta.name, ['Sheet1']);
+          ss.getSheetByName('Sheet1').getRange(1, 1).setValue(src.convertText || '');
+          return { id: ss.getId() };
+        }
+        const rec = addFile({ name: meta.name, mime: meta.mimeType, folder: root.id, exportText: src.convertText || '' });
+        return { id: rec.id };
+      },
+    },
+  };
+
   return {
-    globals: { DocumentApp, SpreadsheetApp, DriveApp, PropertiesService, UrlFetchApp, console },
+    converted,
+    addRawFile: (name, mime, folderId, extra = {}) => addFile({ name, mime, folder: folderId || root.id, ...extra }).id,
+    globals: { DocumentApp, SpreadsheetApp, DriveApp, PropertiesService, UrlFetchApp, HtmlService, Utilities, ScriptApp, Drive, console },
     files, folders, props, fetchLog, uiQueue, root,
     setActive: (s) => { active = s; },
     setFetch: (h) => { fetchHandler = h; },
