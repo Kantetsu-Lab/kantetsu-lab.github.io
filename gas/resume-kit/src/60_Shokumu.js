@@ -30,13 +30,16 @@ function composeShokumu_(model) {
           name: p.name,
           period: formatPeriod_(p.startY, p.startM, p.endY, p.endM),
           role: lines_(p.role),
-          overview: overview
+          overview: overview,
+          tasksRaw: p.tasks.map(function (tk) { return tk.replace(/^[・\-•]\s*/, ''); }),
+          resultsRaw: lines_(p.results).map(function (x) { return x.replace(/^[・\-•]\s*/, ''); })
         };
       });
     return {
       header: formatPeriod_(j.startY, j.startM, j.endY, j.endM) + '　' + j.company,
       period: formatPeriod_(j.startY, j.startM, j.endY, j.endM),
       company: j.company,
+      employment: j.employment, business: j.business, capital: j.capital, sales: j.sales, listing: j.listing, employees: j.employees,
       info: info,
       position: j.position,
       projects: projects
@@ -79,8 +82,10 @@ function composeShokumu_(model) {
   };
 }
 
-function buildShokumuDoc_(model, ss, folder) {
-  if (nz_(model.settings['職務経歴書テンプレート'])) return buildFromTemplate_(model, '職務経歴書', folder);
+function buildShokumuDoc_(model, ss, folder, tpl) {
+  // tpl: undefined → 設定シートの値 / null → 標準レイアウト / { spec, sheetName } → 台帳で選んだ用紙
+  if (tpl) return buildFromTemplate_(model, '職務経歴書', folder, tpl);
+  if (tpl === undefined && nz_(model.settings['職務経歴書テンプレート'])) return buildFromTemplate_(model, '職務経歴書', folder);
   var d = composeShokumu_(model);
   var font = model.settings['職務経歴書フォント'] || 'Noto Sans JP';
   var doc = newA4Doc_(outputFileName_(model, '職務経歴書'), font, 10);

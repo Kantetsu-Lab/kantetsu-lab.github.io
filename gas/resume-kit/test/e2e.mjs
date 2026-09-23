@@ -499,4 +499,140 @@ test('推薦書を AI で下書き → 提案 → 反映', () => {
   assert.equal(ctx.loadModel(ss).suisen['推薦文'], 'AI 推薦文。待ち時間60%削減。');
 });
 
+console.log('会社規定様式（ラベル型の推薦書・会社枠型の職務経歴書）');
+function labelStyleShokumu(gas) {
+  return gas.createDoc('職務経歴書＿マスター', (b) => {
+    ['職 務 経 歴 書', '20xx年xx月xx日現在', '氏名　○○ ○○', '', '■職務要約', '', '', '■職務経歴', ''].forEach((t) => b.appendParagraph(t));
+    const t = b.appendTable([[''], ['事業内容：不明'], ['【担当業務】']]);
+    const info = t.getRow(1).getCell(0);
+    info.appendParagraph('資本金：不明　売上高：不明'); info.appendParagraph('従業員数：不明　上場：未上場');
+    const duty = t.getRow(2).getCell(0);
+    ['・', '', '【実績・取り組み】', '・', ''].forEach((x) => duty.appendParagraph(x));
+    ['', '', '■資格', '', '■スキル・経験', '', '■自己PR', '', '　　以上'].forEach((x) => b.appendParagraph(x));
+  });
+}
+function labelStyleSuisen(gas) {
+  return gas.createDoc('推薦書マスター', (b) => {
+    ['推薦書', '20xx年xx月xx日現在', '氏名　○○ ○○', '', '', '氏名：', '', '年齢：', '', '性別', '', '住まい：', '', '現年収：', '',
+      '希望年収：', '', '退職理由：', '', '', '志望動機：', '', '', '推薦コメント：', '', '', '　　以上'].forEach((t) => b.appendParagraph(t));
+  });
+}
+test('職務経歴書: 自動挿入 → 会社枠を会社数だけ複製、「不明」は空欄時の既定値として残る', () => {
+  const { gas, ctx, ss } = boot();
+  const tpl = labelStyleShokumu(gas);
+  ctx.autoInsertTokensDoc_(tpl);
+  const tk = gas.docText(tpl);
+  for (const x of ['{{作成日}}現在', '氏名　{{氏名}}', '{{職務要約}}', '{{会社_見出し}}', '事業内容：{{会社_事業内容|不明}}', '資本金：{{会社_資本金|不明}}　売上高：{{会社_売上高|不明}}',
+    '従業員数：{{会社_従業員数|不明}}　上場：{{会社_上場|未上場}}', '{{会社_担当業務}}', '{{会社_実績}}', '{{資格一覧}}', '{{スキル経験}}', '{{自己PR}}']) assert.ok(tk.includes(x), x + '\n' + tk);
+  assert.ok(!tk.includes('{{職務経歴詳細}}'), '会社枠があるので「■職務経歴」見出しには入れない');
+  assert.equal(ctx.classifyTokens_(tk).missing.length, 0, JSON.stringify(ctx.classifyTokens_(tk)));
+  const jobs = ss.getSheetByName('職歴');
+  jobs.getRange(3, 11).setValue('');
+  setSetting(ss, '職務経歴書テンプレート', tpl);
+  gas.uiQueue.prompts.push('label');
+  ctx.menuBuildShokumu();
+  const out = gas.liveFiles(outFolder(gas, 'label').id).find((f) => f.mime.includes('document'));
+  assert.ok(out, gas.uiQueue.shown.join('\n'));
+  const t = gas.docText(out.id);
+  assert.ok(!t.includes('{{'), t);
+  const tables = gas.docBody(out.id).getTables();
+  assert.equal(tables.length, 2, '2 社分');
+  assert.ok(tables[0].getText().startsWith('2023年7月～現在　株式会社サンプル薬局（正社員）'), tables[0].getText());
+  assert.ok(tables[0].getText().includes('売上高：不明'), '空なら既定値「不明」\n' + tables[0].getText());
+  assert.ok(tables[0].getText().includes('上場：未上場'));
+  assert.ok(tables[0].getText().includes('所属：調剤薬局／業務改善・DX推進担当'));
+  assert.ok(tables[0].getText().includes('◆社内AI推進・業務改善プロジェクト（2025年9月～現在）'));
+  assert.ok(tables[0].getText().includes('・【社内AI推進・業務改善プロジェクト】調剤待ち時間 平均20分→8分（60%削減）'));
+  assert.ok(tables[1].getText().includes('事業内容：ドラッグストアチェーン経営、調剤薬局経営'));
+  assert.ok(tables[1].getText().includes('上場：東証プライム市場'));
+  for (const x of ['年9月', '氏名　田中 太郎', '・普通自動車第一種運転免許（2016年10月）', '【課題解決力】', '＜ツール・技術＞', '現場の業務構造を可視化', '以上']) assert.ok(t.includes(x), x + '\n' + t);
+  const shikaku = t.slice(t.indexOf('■資格'), t.indexOf('■スキル・経験'));
+  assert.ok(!shikaku.includes('Google Workspace'), 'ツール類は資格ではなくスキル・経験へ');
+});
+test('推薦書: 「氏名：」などのラベルの右に値、文章は次の行に', () => {
+  const { gas, ctx, ss } = boot();
+  const tpl = labelStyleSuisen(gas);
+  ctx.autoInsertTokensDoc_(tpl);
+  const tk = gas.docText(tpl);
+  for (const x of ['氏名：{{氏名}}', '年齢：{{年齢}}歳', '性別：{{性別}}', '住まい：{{住まい}}', '現年収：{{現在年収}}', '希望年収：{{希望年収}}', '退職理由：\n{{転職理由}}', '志望動機：\n{{志望動機}}', '推薦コメント：\n{{推薦コメント}}']) {
+    assert.ok(tk.includes(x), x + '\n' + tk);
+  }
+  setSetting(ss, '推薦書テンプレート', tpl);
+  gas.uiQueue.prompts.push('label推薦');
+  ctx.menuBuildSuisen();
+  const out = gas.liveFiles(outFolder(gas, 'label推薦').id).find((f) => f.mime.includes('document'));
+  assert.ok(out, gas.uiQueue.shown.join('\n'));
+  const t = gas.docText(out.id);
+  assert.ok(!t.includes('{{'), t);
+  for (const x of ['氏名：田中 太郎', /年齢：\d+歳/, '性別：男', '住まい：東京都千代田区', '現年収：462万円', '希望年収：600万円（最低 550万円）', '退職理由：\n一店舗・一法人の改善', '志望動機：\n医療現場で業務改善', '推薦コメント：\n・医療現場の業務を分解', '田中様は、調剤薬局の薬剤師として']) {
+    if (x instanceof RegExp) assert.match(t, x); else assert.ok(t.includes(x), x + '\n' + t);
+  }
+  assert.ok(!t.includes('サンプルマンション'), '住まいに番地・建物名を出さない');
+});
+
+console.log('テンプレート台帳（スプレッドシートの各シート）');
+function templateBook(gas) {
+  const book = gas.createSpreadsheet('職務経歴書テンプレート集', ['ITエンジニア用_職務経歴書', 'コンサル用_職務経歴書', '推薦書_簡易']);
+  for (const name of ['ITエンジニア用_職務経歴書', 'コンサル用_職務経歴書']) {
+    book.getSheetByName(name).getRange(1, 1, 8, 2).setValues([
+      [name, ''], ['氏名', '{{氏名}}'], ['', ''],
+      ['{{会社_見出し}}', ''], ['事業内容：{{会社_事業内容|不明}}', '上場：{{会社_上場|未上場}}'], ['{{会社_担当業務}}', ''],
+      ['■自己PR', ''], ['{{自己PR}}', ''],
+    ]);
+  }
+  book.getSheetByName('推薦書_簡易').getRange(1, 1, 2, 2).setValues([['氏名', '{{氏名}}'], ['推薦', '{{推薦コメント}}']]);
+  return book.getId();
+}
+test('登録: 各シートを 1 件ずつ、種別をシート名から推定', () => {
+  const { gas, ctx, ss } = boot();
+  const book = templateBook(gas);
+  assert.equal(ctx.registerTemplates_(ss, 'https://docs.google.com/spreadsheets/d/' + book + '/edit'), 3);
+  assert.equal(ctx.registerTemplates_(ss, book), 0, '二重登録しない');
+  const rows = ss.getSheetByName('テンプレート').getDataRange().getValues().slice(1);
+  assert.deepEqual(rows.map((r) => r[0] + '|' + r[3]), ['職務経歴書|ITエンジニア用_職務経歴書', '職務経歴書|コンサル用_職務経歴書', '推薦書|推薦書_簡易']);
+});
+test('生成時に番号で選ぶ: 選んだシートだけ残し、会社枠の行を会社数だけ複製。次回は前回の選択が既定', () => {
+  const { gas, ctx, ss } = boot();
+  ctx.registerTemplates_(ss, templateBook(gas));
+  gas.uiQueue.prompts.push('2', '台帳');
+  ctx.menuBuildShokumu();
+  assert.ok(gas.uiQueue.shown.includes('PROMPT 職務経歴書のテンプレート'), gas.uiQueue.shown.join('\n'));
+  const out = gas.liveFiles(outFolder(gas, '台帳').id).find((f) => f.mime.includes('spreadsheet'));
+  assert.ok(out, gas.uiQueue.shown.join('\n'));
+  assert.deepEqual(gas.files.get(out.id).ss.sheets.map((x) => x.name), ['コンサル用_職務経歴書']);
+  const g = gas.sheetGrid(out.id, 'コンサル用_職務経歴書');
+  assert.equal(g[1][1], '田中 太郎');
+  assert.ok(g[3][0].startsWith('2023年7月～現在　株式会社サンプル薬局'), JSON.stringify(g));
+  assert.equal(g[4][1], '上場：未上場');
+  assert.ok(g[6][0].startsWith('2023年4月～2023年6月　株式会社サンプルドラッグ'), JSON.stringify(g));
+  assert.equal(g[7][1], '上場：東証プライム市場');
+  assert.equal(g[9][0], '■自己PR', '下の内容は押し下げられる');
+  assert.ok(!JSON.stringify(g).includes('{{'));
+  gas.uiQueue.prompts.push('', '台帳2');
+  ctx.menuBuildShokumu();
+  const out2 = gas.liveFiles(outFolder(gas, '台帳2').id).find((f) => f.mime.includes('spreadsheet'));
+  assert.deepEqual(gas.files.get(out2.id).ss.sheets.map((x) => x.name), ['コンサル用_職務経歴書']);
+  gas.uiQueue.prompts.push('0', '台帳3');
+  ctx.menuBuildShokumu();
+  assert.ok(gas.liveFiles(outFolder(gas, '台帳3').id).some((f) => f.mime.includes('document')));
+  gas.uiQueue.shown.length = 0;
+  gas.uiQueue.prompts.push('台帳4');
+  ctx.menuBuildSuisen();
+  assert.ok(!gas.uiQueue.shown.includes('PROMPT 推薦書のテンプレート'));
+  const s4 = gas.liveFiles(outFolder(gas, '台帳4').id).find((f) => f.mime.includes('spreadsheet'));
+  assert.ok(s4, gas.uiQueue.shown.join('\n'));
+  assert.ok(gas.sheetGrid(s4.id, '推薦書_簡易')[1][1].startsWith('・医療現場の業務を分解'));
+});
+test('範囲外の番号・キャンセルでは何も作らない', () => {
+  const { gas, ctx, ss } = boot();
+  ctx.registerTemplates_(ss, templateBook(gas));
+  const n = gas.files.size;
+  gas.uiQueue.prompts.push('9');
+  ctx.menuBuildShokumu();
+  gas.uiQueue.prompts.push(null);
+  ctx.menuBuildShokumu();
+  assert.equal(gas.files.size, n);
+  assert.ok(gas.uiQueue.shown.some((m) => m.includes('番号が範囲外')));
+});
+
 console.log(`\n${passed} e2e tests passed`);

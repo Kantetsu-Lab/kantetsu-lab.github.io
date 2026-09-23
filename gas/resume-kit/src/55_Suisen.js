@@ -55,8 +55,10 @@ function runSuisenChecks_(model) {
   return out;
 }
 
-function buildSuisenDoc_(model, ss, folder) {
-  if (nz_(model.settings['推薦書テンプレート'])) return buildFromTemplate_(model, '推薦書', folder);
+function buildSuisenDoc_(model, ss, folder, tpl) {
+  // tpl: undefined → 設定シートの値 / null → 標準レイアウト / { spec, sheetName } → 台帳で選んだ用紙
+  if (tpl) return buildFromTemplate_(model, '推薦書', folder, tpl);
+  if (tpl === undefined && nz_(model.settings['推薦書テンプレート'])) return buildFromTemplate_(model, '推薦書', folder);
   var d = composeSuisen_(model);
   var font = model.settings['推薦書フォント'] || 'Noto Sans JP';
   var doc = newA4Doc_(outputFileName_(model, '推薦書'), font, 10.5);

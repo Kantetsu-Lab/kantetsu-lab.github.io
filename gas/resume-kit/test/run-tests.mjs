@@ -263,4 +263,24 @@ test('推薦書 compose / チェック', () => {
   assert.ok(errs.includes('推薦先企業') && errs.includes('推薦文'));
 });
 
+test('既定値付きトークン・住まい・会社枠の行・種別推定・段落ラベル', () => {
+  assert.equal(ctx.fillTokensInString_('上場：{{会社_上場|未上場}} {{氏名}} {{謎|x}} {{謎2}}', { '会社_上場': '', '氏名': '$1 田中' }), '上場：未上場 $1 田中 x ');
+  assert.equal(ctx.residenceArea_('東京都千代田区千代田1-1 サンプル101'), '東京都千代田区');
+  assert.equal(ctx.residenceArea_('神奈川県横浜市港北区日吉1-2'), '神奈川県横浜市');
+  assert.equal(ctx.residenceArea_('北海道札幌市中央区'), '北海道札幌市');
+  assert.equal(ctx.tokenizeCompanyLine_('資本金：不明　売上高：不明'), '資本金：{{会社_資本金|不明}}　売上高：{{会社_売上高|不明}}');
+  assert.equal(ctx.tokenizeCompanyLine_('上場：'), '上場：{{会社_上場}}');
+  assert.ok(ctx.isCompanyTable_('事業内容：不明\n【担当業務】') && !ctx.isCompanyTable_('氏名'));
+  assert.equal(ctx.guessTemplateKind_('コンサル用_職務経歴書'), '職務経歴書');
+  assert.equal(ctx.guessTemplateKind_('推薦書マスター'), '推薦書');
+  assert.equal(ctx.guessTemplateKind_('シート1', '職務経歴書'), '職務経歴書');
+  const used = {};
+  assert.equal(JSON.stringify(ctx.paragraphTokenPlan_('年齢：', used)), JSON.stringify({ mode: 'inline', token: '{{年齢}}', append: '{{年齢}}歳' }));
+  assert.equal(ctx.paragraphTokenPlan_('性別', used).append, '：{{性別}}');
+  assert.equal(ctx.paragraphTokenPlan_('■資格', used).token, '{{資格一覧}}');
+  assert.equal(ctx.paragraphTokenPlan_('推薦コメント：', used).mode, 'block');
+  assert.equal(ctx.paragraphTokenPlan_('以上', used), null);
+  assert.equal(ctx.paragraphTokenPlan_('職 務 経 歴 書', used), null);
+});
+
 console.log(`\n${passed} tests passed`);

@@ -5,13 +5,14 @@
 
 function setupSheets_(ss, withSample) {
   var order = [KL.SHEET.BASIC, KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS, KL.SHEET.SKILLS,
-    KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS, KL.SHEET.TEXTS, KL.SHEET.SUISEN, KL.SHEET.ATTACH, KL.SHEET.SETTINGS];
+    KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS, KL.SHEET.TEXTS, KL.SHEET.SUISEN, KL.SHEET.ATTACH, KL.SHEET.TEMPLATES, KL.SHEET.SETTINGS];
 
   setupKeyValueSheet_(ss, KL.SHEET.BASIC, KL.BASIC_KEYS, withSample ? sampleBasic_() : null);
   setupKeyValueSheet_(ss, KL.SHEET.TEXTS, KL.TEXT_KEYS, withSample ? sampleTexts_() : null);
   setupKeyValueSheet_(ss, KL.SHEET.SUISEN, KL.SUISEN_KEYS, withSample ? sampleSuisen_() : null);
   setupKeyValueSheet_(ss, KL.SHEET.SETTINGS, KL.SETTING_KEYS, null);
   attachSheet_(ss);
+  templateSheet_(ss);
 
   var samples = withSample ? sampleTables_() : {};
   [KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS, KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS]

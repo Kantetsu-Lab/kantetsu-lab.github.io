@@ -26,6 +26,7 @@ function onOpen() {
       .addItem('添削プロンプトだけ作る（Gemini に貼る）', 'menuAiPrompt')
       .addItem('APIキーを設定', 'menuSetApiKey'))
     .addSubMenu(ui.createMenu('⑤ 会社規定の用紙（テンプレート）')
+      .addItem('テンプレートを登録（スプレッドシートは各シート）', 'menuRegisterTemplates')
       .addItem('テンプレートを診断', 'menuDiagnoseTemplate')
       .addItem('用紙にトークンを自動挿入（コピーを作成）', 'menuAutoInsertTokens')
       .addItem('トークン一覧を表示', 'menuTokenList'))
@@ -109,11 +110,14 @@ function buildAndNotify_(kinds) {
   if (!guardErrors_(ss, model, kinds)) return;
   var builders = { '履歴書': buildRirekishoDoc_, '職務経歴書': buildShokumuDoc_, '推薦書': buildSuisenDoc_ };
   try {
+    // 台帳にテンプレートが複数あれば、先に選んでもらう（保存先を作る前に）
+    var chosen = {};
+    kinds.forEach(function (k) { chosen[k] = chooseTemplate_(ss, k, ui); });
     var folder = chooseOutputFolder_(ss, model.settings, ui, nz_(model.basic['氏名']));
     if (!folder) return;
     var msg = ['保存先: ' + folder.getName() + '\n' + folder.getUrl()];
     kinds.forEach(function (k) {
-      var r = builders[k](model, ss, folder);
+      var r = builders[k](model, ss, folder, chosen[k]);
       msg.push(k + ':\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : ''));
     });
     ui.alert('生成完了', msg.join('\n\n'), ui.ButtonSet.OK);
@@ -339,6 +343,24 @@ function menuAutoInsertTokens() {
   }
 }
 
+function menuRegisterTemplates() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var res = ui.prompt('テンプレートを登録',
+    '用紙の URL か ID を入力してください。\n' +
+    'スプレッドシートの場合は、シート（タブ）ごとに 1 件ずつ登録します。\n' +
+    '種別（履歴書 / 職務経歴書 / 推薦書）はシート名・ファイル名から推定します。違っていたら「テンプレート」シートで直してください。',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK || !nz_(res.getResponseText())) return;
+  try {
+    var n = registerTemplates_(ss, res.getResponseText(), '職務経歴書');
+    ss.setActiveSheet(templateSheet_(ss));
+    ui.alert('登録しました', n + ' 件を「テンプレート」シートに追加しました。\n同じ種別が 2 件以上あると、生成時に番号で選べます（○ を付けたものが既定）。', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('登録できません', String(e.message || e), ui.ButtonSet.OK);
+  }
+}
+
 function menuTokenList() {
   var L = ['用紙に書くトークン（{{ }} 付き）', ''];
   L.push('【単一値】');
@@ -348,6 +370,11 @@ function menuTokenList() {
   Object.keys(KL.TOKENS_LIST).forEach(function (n) {
     L.push(KL.TOKENS_LIST[n].cols.map(function (c) { return '{{' + n + '_' + c + '}}'; }).join(' ') + '　' + KL.TOKENS_LIST[n].note);
   });
+  L.push('');
+  L.push('【会社枠】職務経歴の枠（ドキュメントは表、スプレッドシートは行のまとまり）に置くと、会社の数だけ複製');
+  KL.TOKENS_COMPANY.forEach(function (t) { L.push('{{' + t[0] + '}}' + (t[1] ? '　' + t[1] : '')); });
+  L.push('');
+  L.push('【既定値】{{名前|既定値}} と書くと値が空のとき既定値を出す（例: {{会社_上場|未上場}}）');
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName('トークン一覧') || ss.insertSheet('トークン一覧');
   sh.clear();

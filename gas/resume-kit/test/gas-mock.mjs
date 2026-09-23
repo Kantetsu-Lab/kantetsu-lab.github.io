@@ -39,6 +39,7 @@ class El {
   appendParagraph(text) { return this._add(new Para(text)); }
   appendTable(cells) { return this._add(new Table(cells)); }
   insertParagraph(i, text) { return this._add(new Para(text), i); }
+  insertTable(i, table) { return this._add(table, i); }
 }
 
 class Para extends El {
@@ -49,7 +50,7 @@ class Para extends El {
   editAsText() {
     const p = this;
     const txt = {
-      getType: () => T.TEXT, getParent: () => p, asText: () => txt,
+      getType: () => T.TEXT, getParent: () => p, asText: () => txt, getText: () => p.text,
       deleteText: (s, e) => { p.text = p.text.slice(0, s) + p.text.slice(e + 1); return txt; },
       insertText: (o, v) => { p.text = p.text.slice(0, o) + v + p.text.slice(o); return txt; },
       setFontSize: (n) => { p.style.size = n; return txt; },
@@ -181,6 +182,12 @@ export function createGas() {
         vals.forEach((row, i) => row.forEach((v, j) => put(sh, r + i, c + j, v))); return api;
       },
       setNote: (n) => { sh.notes[`${r},${c}`] = n; return api; },
+      copyTo: (dest) => {
+        const vals = api.getValues();
+        const r0 = dest.getRow(), c0 = dest.getColumn();
+        vals.forEach((row, i) => row.forEach((v, j) => put(sh, r0 + i, c0 + j, v)));
+        return api;
+      },
       clearContent: () => { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) if (get(sh, r + i, c + j) !== '') put(sh, r + i, c + j, ''); return api; },
       insertCheckboxes: () => { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) if (get(sh, r + i, c + j) === '') put(sh, r + i, c + j, false); return api; },
     };
@@ -199,6 +206,7 @@ export function createGas() {
       },
       getDataRange: () => rangeApi(sh, 1, 1, Math.max(lastRow(sh), 1), Math.max(lastCol(sh), 1)),
       getLastRow: () => lastRow(sh), getLastColumn: () => lastCol(sh), getMaxRows: () => sh.maxRows,
+      insertRowsAfter: (row, n) => { while (sh.grid.length < row) sh.grid.push([]); sh.grid.splice(row, 0, ...Array.from({ length: n }, () => [])); return api; },
       clear: () => { sh.grid = []; sh.notes = {}; return api; },
       createTextFinder: (text) => {
         let regex = false, whole = false;

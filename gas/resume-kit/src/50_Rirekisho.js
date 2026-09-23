@@ -68,8 +68,10 @@ function composeRirekisho_(model) {
   };
 }
 
-function buildRirekishoDoc_(model, ss, folder) {
-  if (nz_(model.settings['履歴書テンプレート'])) return buildFromTemplate_(model, '履歴書', folder);
+function buildRirekishoDoc_(model, ss, folder, tpl) {
+  // tpl: undefined → 設定シートの値 / null → 標準レイアウト / { spec, sheetName } → 台帳で選んだ用紙
+  if (tpl) return buildFromTemplate_(model, '履歴書', folder, tpl);
+  if (tpl === undefined && nz_(model.settings['履歴書テンプレート'])) return buildFromTemplate_(model, '履歴書', folder);
   var d = composeRirekisho_(model);
   var font = model.settings['履歴書フォント'] || 'Noto Serif JP';
   var doc = newA4Doc_(outputFileName_(model, '履歴書'), font, 10);

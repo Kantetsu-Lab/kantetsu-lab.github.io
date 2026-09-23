@@ -1,7 +1,7 @@
 /*
  * Kantetsu Lab 履歴書・職務経歴書ジェネレーター（Google Apps Script）
  * このファイルは gas/resume-kit/src/*.js から自動生成されています。直接編集せず src を直して `node gas/resume-kit/bundle.mjs` を実行してください。
- * generated: 2026-09-23T01:12:29.410Z
+ * generated: 2026-09-23T03:04:31.876Z
  */
 // ===== 00_Config.js =====
 /**
@@ -29,7 +29,8 @@ KL.SHEET = {
   SETTINGS: '設定',
   CHECK: 'チェック結果',
   AI: 'AI添削',
-  IMPORT: '取り込み結果'
+  IMPORT: '取り込み結果',
+  TEMPLATES: 'テンプレート'
 };
 
 // 「項目 / 値 / 説明」形式のシートのキー定義
@@ -197,8 +198,19 @@ KL.TOKENS_SINGLE = [
   ['推薦者会社', ''], ['推薦者部署', ''], ['推薦者氏名', ''], ['推薦者連絡先', ''],
   ['推薦ポイント', '・付き 1行1項目'], ['推薦文', ''], ['人物像', '人物像・面談所感'], ['転職理由', ''], ['懸念点', '懸念点と見解'],
   ['現在年収', ''], ['希望年収', ''], ['入社可能時期', ''], ['希望勤務地', ''], ['他社選考状況', ''],
-  ['現職', '直近の会社名（部門・職位）'], ['最終学歴', '最後の卒業・修了']
+  ['現職', '直近の会社名（部門・職位）'], ['最終学歴', '最後の卒業・修了'],
+  ['住まい', '都道府県＋市区町村（番地以降は出さない）'], ['推薦コメント', '推薦ポイント（・付き）＋推薦文'],
+  ['スキル経験', '活かせる経験・能力＋ツール・技術']
 ];
+// 会社ブロックトークン: 表（職務経歴の枠）に置くと、その表を会社の数だけ複製して埋める（新しい順）
+// {{名前|既定値}} と書くと、値が空のとき既定値を出す（例: {{会社_上場|未上場}}）
+KL.TOKENS_COMPANY = [
+  ['会社_見出し', '2023年7月～現在　株式会社〇〇（正社員／部門）'], ['会社_期間', ''], ['会社_会社名', ''], ['会社_雇用形態', ''], ['会社_部門', '部門・職位'],
+  ['会社_事業内容', ''], ['会社_資本金', ''], ['会社_売上高', ''], ['会社_従業員数', ''], ['会社_上場', ''],
+  ['会社_担当業務', '・付き 1行1項目（プロジェクトの支援内容）'], ['会社_実績', '・付き（プロジェクトの成果・実績）'], ['会社_詳細', 'プロジェクト詳細の全文']
+];
+// 自動挿入で、同じトークンを 2 回入れない（連絡先欄の 2 つ目の「電話」など）
+KL.TOKENS_ONCE = ['{{電話}}', '{{携帯}}', '{{メール}}', '{{郵便番号}}', '{{現住所}}', '{{ふりがな}}', '{{現住所ふりがな}}', '{{連絡先}}', '{{連絡先ふりがな}}'];
 // 行リストトークン: 用紙の 1 行（ドキュメントは表の行、スプレッドシートは開始行）に置くと、行数分展開される
 KL.TOKENS_LIST = {
   '学歴職歴': { cols: ['年', '月', '内容'], note: '学歴と職歴を 1 つの表に（履歴書標準）' },
@@ -213,7 +225,7 @@ KL.LABEL_TO_TOKEN = [
   ['現住所', '{{現住所}}'], ['住所', '{{現住所}}'], ['電話', '{{電話}}'], ['TEL', '{{電話}}'], ['携帯', '{{携帯}}'], ['メール', '{{メール}}'], ['E-mail', '{{メール}}'], ['Email', '{{メール}}'],
   ['連絡先', '{{連絡先}}'], ['通勤時間', '{{通勤時間}}'], ['扶養家族', '{{扶養家族数}}'], ['配偶者の扶養義務', '{{配偶者の扶養義務}}'], ['配偶者', '{{配偶者}}'],
   ['志望の動機', '{{志望動機}}'], ['志望動機', '{{志望動機}}'], ['本人希望', '{{本人希望}}'], ['職務要約', '{{職務要約}}'], ['職務概要', '{{職務要約}}'], ['自己PR', '{{自己PR}}'],
-  ['活かせる経験', '{{経験能力}}'], ['推薦理由', '{{推薦ポイント}}'], ['推薦ポイント', '{{推薦ポイント}}'], ['推薦文', '{{推薦文}}'], ['推薦ポジション', '{{推薦ポジション}}'], ['人物像', '{{人物像}}'], ['面談所感', '{{人物像}}'], ['転職理由', '{{転職理由}}'], ['懸念', '{{懸念点}}'], ['希望年収', '{{希望年収}}'], ['現在年収', '{{現在年収}}'], ['現年収', '{{現在年収}}'], ['入社可能', '{{入社可能時期}}'], ['職務経歴', '{{職務経歴詳細}}'], ['免許・資格', '{{資格_内容}}'], ['資格', '{{資格_内容}}'], ['学歴・職歴', '{{学歴職歴_内容}}'], ['学歴', '{{学歴_内容}}'], ['職歴', '{{職歴_内容}}']
+  ['活かせる経験', '{{経験能力}}'], ['推薦コメント', '{{推薦コメント}}'], ['推薦理由', '{{推薦ポイント}}'], ['退職理由', '{{転職理由}}'], ['住まい', '{{住まい}}'], ['年齢', '{{年齢}}'], ['スキル', '{{スキル経験}}'], ['推薦ポイント', '{{推薦ポイント}}'], ['推薦文', '{{推薦文}}'], ['推薦ポジション', '{{推薦ポジション}}'], ['人物像', '{{人物像}}'], ['面談所感', '{{人物像}}'], ['転職理由', '{{転職理由}}'], ['懸念', '{{懸念点}}'], ['希望年収', '{{希望年収}}'], ['現在年収', '{{現在年収}}'], ['現年収', '{{現在年収}}'], ['入社可能', '{{入社可能時期}}'], ['職務経歴', '{{職務経歴詳細}}'], ['免許・資格', '{{資格_内容}}'], ['資格', '{{資格_内容}}'], ['学歴・職歴', '{{学歴職歴_内容}}'], ['学歴', '{{学歴_内容}}'], ['職歴', '{{職歴_内容}}']
 ];
 
 // AI の system プロンプト
@@ -224,6 +236,15 @@ KL.AI_WRITABLE = [KL.SHEET.BASIC, KL.SHEET.TEXTS, KL.SHEET.EDUCATION, KL.SHEET.J
   KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS, KL.SHEET.SUISEN];
 // 項目 / 値 形式のシート
 KL.KV_SHEETS = [KL.SHEET.BASIC, KL.SHEET.TEXTS, KL.SHEET.SUISEN, KL.SHEET.SETTINGS];
+
+// テンプレートの穴埋め表記（自動挿入でトークンに置き換える）
+KL.PLACEHOLDER_DATE = '(20|２０)[xXｘＸ○〇]{2}年\\s*[xXｘＸ○〇]{1,2}月\\s*[xXｘＸ○〇]{1,2}日';
+KL.PLACEHOLDER_NAME = '[○〇]{2}[ 　][○〇]{2}';
+// 表の外の見出しで、表用（行リスト）トークンを 1 つの文章トークンに読み替える
+KL.PARAGRAPH_ALIASES = { '{{資格_内容}}': '{{資格一覧}}' };
+
+// テンプレート台帳の見出し
+KL.TEMPLATE_HEADERS = ['種別', '名前', 'URL / ID', 'シート名', '既定'];
 
 
 // ===== 10_Util.js =====
@@ -1023,6 +1044,16 @@ function buildTokenValues_(model) {
   single['推薦文'] = su.letter.join('\n'); single['人物像'] = su.persona.join('\n'); single['転職理由'] = su.reason.join('\n'); single['懸念点'] = su.concern.join('\n');
   single['現在年収'] = su.salaryNow; single['希望年収'] = su.salaryWish; single['入社可能時期'] = su.joinable; single['希望勤務地'] = su.location; single['他社選考状況'] = su.others;
   single['現職'] = su.current; single['最終学歴'] = su.education;
+  // ラベル型・会社枠型の用紙で使う項目
+  single['住まい'] = residenceArea_(r.address);
+  single['推薦コメント'] = (su.points.length ? su.points.map(function (p) { return '・' + p; }).join('\n') + (su.letter.length ? '\n\n' : '') : '') + su.letter.join('\n');
+  var licGroups = s.licenseGroups.filter(function (g) { return g.title !== 'ツール・技術'; });
+  var toolGroups = s.licenseGroups.filter(function (g) { return g.title === 'ツール・技術'; });
+  single['資格一覧'] = licGroups.map(function (g) { return g.items.map(function (it) { return '・' + it; }).join('\n'); }).join('\n');
+  single['スキル経験'] = [single['経験能力']].concat(toolGroups.map(function (g) {
+    return '＜' + g.title + '＞\n' + g.items.map(function (it) { return '・' + it; }).join('\n');
+  })).filter(function (x) { return x; }).join('\n\n');
+  var companies = s.companies.map(function (c) { return companyTokenMap_(c); });
   var hist = r.historyRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text]; });
   var eduRows = [], jobRows = [], mode = '';
   hist.forEach(function (row) {
@@ -1037,7 +1068,38 @@ function buildTokenValues_(model) {
     '資格': r.licenseRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text]; }),
     '所属企業': s.jobRows
   };
-  return { single: single, lists: lists, photoId: r.photoId };
+  return { single: single, lists: lists, photoId: r.photoId, companies: companies };
+}
+
+/** 現住所 → 「都道府県＋市区町村」（推薦書の「住まい」用。番地以降は出さない） */
+function residenceArea_(address) {
+  var a = nz_(address);
+  var m = a.match(/^(.{2,3}?[都道府県])(.+?[市区町村郡])/);
+  if (m) return m[1] + m[2];
+  m = a.match(/^(.+?[市区町村])/);
+  return m ? m[1] : a;
+}
+
+/** 職務経歴書の 1 社分 → {{会社_...}} の値（純粋関数） */
+function companyTokenMap_(c) {
+  var tasks = [], results = [];
+  if (c.projects.length === 0 && c.position) tasks.push('・' + c.position);
+  else if (c.position) tasks.push('所属：' + c.position);
+  c.projects.forEach(function (p) {
+    var multi = c.projects.length > 1;
+    if (multi) tasks.push('◆' + p.name + '（' + p.period + '）');
+    p.tasksRaw.forEach(function (t) { tasks.push('・' + t); });
+    p.resultsRaw.forEach(function (x) { results.push('・' + (multi ? '【' + p.name + '】' : '') + x); });
+  });
+  var detail = c.projects.map(function (p) {
+    return ['◆' + p.name + '（' + p.period + '）'].concat(p.role.length ? ['役割・規模：' + p.role.join(' / ')] : []).concat(p.overview).join('\n');
+  }).join('\n\n');
+  return {
+    '会社_見出し': c.period + '　' + c.company + (c.employment ? '（' + c.employment + '）' : ''),
+    '会社_期間': c.period, '会社_会社名': c.company, '会社_雇用形態': c.employment, '会社_部門': c.position,
+    '会社_事業内容': c.business, '会社_資本金': c.capital, '会社_売上高': c.sales, '会社_従業員数': c.employees, '会社_上場': c.listing,
+    '会社_担当業務': tasks.join('\n'), '会社_実績': results.join('\n'), '会社_詳細': detail
+  };
 }
 
 function tokenRegex_(name) {
@@ -1051,6 +1113,11 @@ function resolveTemplateFile_(spec) {
   var file;
   try { file = DriveApp.getFileById(id); } catch (e) { throw new Error('テンプレートが開けません（ID: ' + id + '）。共有されているか確認してください。'); }
   return { id: id, file: file, mime: file.getMimeType(), name: file.getName() };
+}
+
+/** 文字列内のトークンを置き換え（純粋関数。スプレッドシート用） */
+function fillTokensInString_(text, map) {
+  return String(text).replace(/\{\{([^{}]+)\}\}/g, function (m, inner) { return tokenValue_(inner, map, true); });
 }
 
 /** テンプレートを Google 形式のコピーとして出力フォルダに作る。{ id, kind: 'doc'|'sheet', url } */
@@ -1071,12 +1138,15 @@ function copyTemplateAsGoogle_(tpl, name, folder) {
 }
 
 /** テンプレートから生成（履歴書・職務経歴書共通） */
-function buildFromTemplate_(model, kind, folder) {
-  var tpl = resolveTemplateFile_(model.settings[kind + 'テンプレート']);
+function buildFromTemplate_(model, kind, folder, chosen) {
+  var tpl = resolveTemplateFile_(chosen ? chosen.spec : model.settings[kind + 'テンプレート']);
   var out = copyTemplateAsGoogle_(tpl, outputFileName_(model, kind), folder);
   var values = buildTokenValues_(model);
   if (out.kind === 'doc') fillDocsTemplate_(out.id, values);
-  else fillSheetsTemplate_(out.id, values);
+  else {
+    if (chosen && chosen.sheetName) keepOnlySheet_(out.id, chosen.sheetName);
+    fillSheetsTemplate_(out.id, values);
+  }
   return finalizeFile_(out.id, out.url, folder, model.settings);
 }
 
@@ -1143,31 +1213,86 @@ function fillDocsTemplate_(docId, values) {
     }
   }
 
-  // 単一トークン
-  Object.keys(values.single).forEach(function (k) {
-    containers.forEach(function (c) { replaceLiteral_(c, k, values.single[k]); });
-  });
-  // 残ったトークンを消す
-  containers.forEach(function (c) { c.replaceText('\\{\\{[^}]*\\}\\}', ''); });
+  // 会社ブロック（{{会社_...}} を含む表を会社の数だけ複製）
+  fillCompanyBlocksDoc_(body, values.companies || []);
+  // 単一トークン → 残りは既定値か空に
+  containers.forEach(function (c) { fillTokensIn_(c, values.single, false); });
+  containers.forEach(function (c) { fillTokensIn_(c, {}, true); });
   doc.saveAndClose();
 }
 
+/** {{会社_...}} を含む表を会社ごとに複製して埋める（職務経歴書の会社枠） */
+function fillCompanyBlocksDoc_(body, companies) {
+  body.getTables().filter(function (t) { return t.getText().indexOf('{{会社_') >= 0; }).forEach(function (table) {
+    if (companies.length === 0) { fillTokensIn_(table, {}, true); return; }
+    var parent = table.getParent();
+    var proto = table.copy();
+    var last = table;
+    companies.forEach(function (c, i) {
+      var target = table;
+      if (i > 0) {
+        var idx = parent.getChildIndex(last);
+        parent.insertParagraph(idx + 1, '');
+        target = parent.insertTable(idx + 2, proto.copy());
+      }
+      fillTokensIn_(target, c, true);
+      last = target;
+    });
+  });
+}
+
+/** トークン文字列 "名前" / "名前|既定値" を分解（純粋関数） */
+function parseToken_(inner) {
+  var i = inner.indexOf('|');
+  return i < 0 ? { name: inner.trim(), def: null } : { name: inner.slice(0, i).trim(), def: inner.slice(i + 1) };
+}
+
+/** 1 トークンの置換後の文字列。map に無い名前は undefined（dropUnknown なら既定値か空） */
+function tokenValue_(inner, map, dropUnknown) {
+  var t = parseToken_(inner);
+  var has = Object.prototype.hasOwnProperty.call(map, t.name);
+  if (!has && !dropUnknown) return undefined;
+  var v = has ? String(map[t.name] === null || map[t.name] === undefined ? '' : map[t.name]) : '';
+  if (v === '' && t.def !== null) v = t.def;
+  return v.replace(/\{\{|\}\}/g, '');
+}
+
 /**
- * {{name}} を value に「文字どおり」置き換える。
+ * コンテナ内の {{名前}} / {{名前|既定値}} を map の値で「文字どおり」置き換える。
  * replaceText は置換文字列の $ や \ を特殊扱いする可能性があるため、検索して削除→挿入する。
+ * 一致を先に全部集め、後ろから処理する（前の位置がずれないように）。
  */
-function replaceLiteral_(container, name, value) {
-  var pattern = tokenRegex_(name);
-  var v = String(value === null || value === undefined ? '' : value).replace(/\{\{|\}\}/g, '');
-  var guard = 0;
+function fillTokensIn_(container, map, dropUnknown) {
+  replaceMatchesWith_(container, '\\{\\{[^{}]+\\}\\}', function (m) {
+    return tokenValue_(m.slice(2, -2), map, dropUnknown);
+  });
+}
+
+/** 正規表現に一致した各箇所を fn(一致文字列) の戻り値で置き換える（undefined は変更なし） */
+function replaceMatchesWith_(container, pattern, fn) {
+  var hits = [];
   var r = container.findText(pattern);
-  while (r && guard++ < 1000) {
-    var text = r.getElement().asText();
-    var start = r.getStartOffset();
-    text.deleteText(start, r.getEndOffsetInclusive());
-    if (v !== '') text.insertText(start, v);
-    r = container.findText(pattern);
+  var guard = 0;
+  while (r && guard++ < 5000) {
+    hits.push({ text: r.getElement().asText(), start: r.getStartOffset(), end: r.getEndOffsetInclusive() });
+    r = container.findText(pattern, r);
   }
+  for (var i = hits.length - 1; i >= 0; i--) {
+    var h = hits[i];
+    var matched = h.text.getText().slice(h.start, h.end + 1);
+    var v = fn(matched);
+    if (v === undefined || v === matched) continue;
+    h.text.deleteText(h.start, h.end);
+    if (v !== '') h.text.insertText(h.start, v);
+  }
+  return hits.length;
+}
+
+/** {{name}}（既定値付きも含む）を value に置き換える */
+function replaceLiteral_(container, name, value) {
+  var map = {};
+  map[name] = value;
+  fillTokensIn_(container, map, false);
 }
 
 /** 要素の位置（親からのインデックス列）。文書順の比較と同一判定に使う */
@@ -1219,6 +1344,50 @@ function findAncestor_(el, type) {
 
 // ---------------- Google スプレッドシート
 
+/** コピーしたスプレッドシートから、選んだシート以外を消す */
+function keepOnlySheet_(ssId, sheetName) {
+  var ss = SpreadsheetApp.openById(ssId);
+  var keep = ss.getSheetByName(sheetName);
+  if (!keep) throw new Error('テンプレートにシート「' + sheetName + '」がありません。');
+  ss.getSheets().forEach(function (sh) { if (sh.getName() !== sheetName) ss.deleteSheet(sh); });
+}
+
+/**
+ * {{会社_...}} を含む行のまとまり（会社枠）を会社の数だけ下に複製して埋める。
+ * 複製は行を挿入してから書式ごとコピーするので、下の内容は押し下げられる。
+ */
+function fillCompanyBlocksSheet_(sh, companies) {
+  var hits = sh.createTextFinder('{{会社_').matchEntireCell(false).findAll();
+  if (hits.length === 0) return;
+  var top = Math.min.apply(null, hits.map(function (c) { return c.getRow(); }));
+  var bottom = Math.max.apply(null, hits.map(function (c) { return c.getRow(); }));
+  var h = bottom - top + 1;
+  var width = Math.max(sh.getLastColumn(), 1);
+  var list = companies.length ? companies : [{}];
+  if (list.length > 1) {
+    sh.insertRowsAfter(bottom, h * (list.length - 1));
+    for (var i = 1; i < list.length; i++) {
+      sh.getRange(top, 1, h, width).copyTo(sh.getRange(top + h * i, 1, h, width));
+    }
+  }
+  list.forEach(function (c, i) {
+    var range = sh.getRange(top + h * i, 1, h, width);
+    var vals = range.getValues();
+    var changed = false;
+    vals.forEach(function (row, r) {
+      row.forEach(function (v, k) {
+        if (typeof v === 'string' && v.indexOf('{{会社_') >= 0) {
+          var map = {};
+          Object.keys(c).forEach(function (key) { map[key] = c[key]; });
+          sh.getRange(top + h * i + r, k + 1).setValue(String(v).replace(/\{\{(会社_[^{}]+)\}\}/g, function (m, inner) { return tokenValue_(inner, map, true); }));
+          changed = true;
+        }
+      });
+    });
+    return changed;
+  });
+}
+
 function fillSheetsTemplate_(ssId, values) {
   var ss = SpreadsheetApp.openById(ssId);
   ss.getSheets().forEach(function (sh) {
@@ -1234,11 +1403,15 @@ function fillSheetsTemplate_(ssId, values) {
         plan.forEach(function (w) { sh.getRange(w[0], w[1]).setValue(w[2]); });
       });
     });
-    Object.keys(values.single).forEach(function (k) {
-      if (k === '写真') return;
-      sh.createTextFinder('{{' + k + '}}').matchEntireCell(false).replaceAllWith(values.single[k]);
+    // 会社枠 → 単一トークン（既定値付きも）をセルごとに置き換え
+    fillCompanyBlocksSheet_(sh, values.companies || []);
+    var map = {};
+    Object.keys(values.single).forEach(function (k) { if (k !== '写真') map[k] = values.single[k]; });
+    sh.createTextFinder('{{').matchEntireCell(false).findAll().forEach(function (cell) {
+      var v = cell.getValue();
+      if (typeof v !== 'string') return;
+      cell.setValue(fillTokensInString_(v, map));
     });
-    sh.createTextFinder('\\{\\{[^}]*\\}\\}').useRegularExpression(true).replaceAllWith('');
   });
   SpreadsheetApp.flush();
 }
@@ -1268,8 +1441,8 @@ function planSheetListWrites_(slots, values) {
 function classifyTokens_(text) {
   var found = {};
   var m, re = /\{\{([^}]+)\}\}/g;
-  while ((m = re.exec(text)) !== null) found[m[1].trim()] = true;
-  var singles = KL.TOKENS_SINGLE.map(function (t) { return t[0]; });
+  while ((m = re.exec(text)) !== null) found[parseToken_(m[1]).name] = true;
+  var singles = KL.TOKENS_SINGLE.map(function (t) { return t[0]; }).concat(KL.TOKENS_COMPANY.map(function (t) { return t[0]; }));
   var known = [], unknown = [];
   Object.keys(found).forEach(function (t) {
     var isList = Object.keys(KL.TOKENS_LIST).some(function (n) {
@@ -1277,10 +1450,13 @@ function classifyTokens_(text) {
     });
     if (singles.indexOf(t) >= 0 || isList) known.push(t); else unknown.push(t);
   });
-  var isSuisen = !!(found['推薦文'] || found['推薦ポイント'] || found['推薦ポジション']);
-  var essential = isSuisen ? ['氏名', '推薦文'] : ['氏名', '生年月日', '現住所'];
+  var isSuisen = !!(found['推薦文'] || found['推薦ポイント'] || found['推薦ポジション'] || found['推薦コメント']);
+  var isShokumu = Object.keys(found).some(function (t) { return /^会社_/.test(t); }) || !!(found['職務要約'] || found['職務経歴詳細']);
+  var essential = isSuisen ? ['氏名'] : isShokumu ? ['氏名', '職務要約'] : ['氏名', '生年月日', '現住所'];
+  if (isSuisen && !found['推薦文'] && !found['推薦コメント']) essential.push('推薦文');
   var missing = essential.filter(function (e) { return !found[e] && !found[e + '_年']; });
-  if (!isSuisen && !Object.keys(found).some(function (t) { return /^(学歴職歴|学歴|職歴)_/.test(t); }) && !found['職務経歴詳細']) missing.push('学歴職歴_内容（または 学歴_内容 / 職歴_内容 / 職務経歴詳細）');
+  var hasCareer = Object.keys(found).some(function (t) { return /^(学歴職歴|学歴|職歴|会社)_/.test(t); }) || found['職務経歴詳細'];
+  if (!isSuisen && !hasCareer) missing.push('学歴職歴_内容（または 学歴_内容 / 職歴_内容 / 職務経歴詳細）');
   return { known: known.sort(), unknown: unknown.sort(), missing: missing };
 }
 
@@ -1319,14 +1495,15 @@ function resolveLabelToken_(label, below, used) {
     if (b === '{{現住所}}') t = '{{現住所ふりがな}}';
     else if (b === '{{連絡先}}') t = '{{連絡先ふりがな}}';
   }
-  if (!listNameOfToken_(t) && used[t]) return '';
-  used[t] = true;
+  if (KL.TOKENS_ONCE.indexOf(t) >= 0 && used[t]) return '';
+  if (used[t] === 'block') return ''; // 会社枠がある文書の「職務経歴」見出しなど
+  if (!used[t]) used[t] = true;
   return t;
 }
 
 /** 右隣が埋まっているとき、直下や同じセルに入れてよい「文章欄」のトークン */
 function isBlockToken_(t) {
-  return ['{{志望動機}}', '{{本人希望}}', '{{職務要約}}', '{{自己PR}}', '{{経験能力}}', '{{職務経歴詳細}}', '{{推薦ポイント}}', '{{推薦文}}', '{{人物像}}', '{{転職理由}}', '{{懸念点}}'].indexOf(t) >= 0;
+  return ['{{志望動機}}', '{{本人希望}}', '{{職務要約}}', '{{自己PR}}', '{{経験能力}}', '{{職務経歴詳細}}', '{{推薦ポイント}}', '{{推薦コメント}}', '{{スキル経験}}', '{{資格一覧}}', '{{推薦文}}', '{{人物像}}', '{{転職理由}}', '{{懸念点}}'].indexOf(t) >= 0;
 }
 
 /** リスト系トークン {{学歴職歴_内容}} → 名前 */
@@ -1341,7 +1518,14 @@ function autoInsertTokensDoc_(docId) {
   var body = doc.getBody();
   var count = 0;
   var used = {};
+  // 「20xx年xx月xx日」「○○ ○○」のような穴埋め表記（本文・ヘッダー・フッター）
+  [body, doc.getHeader(), doc.getFooter()].forEach(function (sec) { if (sec) count += replacePlaceholders_(sec); });
+  // 職務経歴の会社枠
   body.getTables().forEach(function (table) {
+    if (isCompanyTable_(table.getText())) { count += tokenizeCompanyTable_(table); used['{{職務経歴詳細}}'] = 'block'; }
+  });
+  body.getTables().forEach(function (table) {
+    if (table.getText().indexOf('{{会社_') >= 0) return;
     var nRows = table.getNumRows();
     for (var r = 0; r < nRows; r++) {
       var row = table.getRow(r);
@@ -1375,32 +1559,111 @@ function autoInsertTokensDoc_(docId) {
       }
     }
   });
-  // 表の外の見出し段落（職務経歴書に多い「■職務要約」「氏名：」など）
-  var n = body.getNumChildren();
+  // 表の外の段落（本文とヘッダー）: 「■職務要約」のような見出し、「氏名：」のようなラベル
+  var sections = [body];
+  if (doc.getHeader()) sections.unshift(doc.getHeader());
+  sections.forEach(function (sec) { count += insertParagraphTokens_(sec, used); });
+  doc.saveAndClose();
+  return count;
+}
+
+/** 穴埋め表記 → トークン。置き換えた数を返す */
+function replacePlaceholders_(sec) {
+  var n = 0;
+  n += replaceMatchesWith_(sec, KL.PLACEHOLDER_DATE, function () { return '{{作成日}}'; });
+  n += replaceMatchesWith_(sec, KL.PLACEHOLDER_NAME, function () { return '{{氏名}}'; });
+  return n;
+}
+
+/** 会社枠らしい表か（純粋関数） */
+function isCompanyTable_(text) {
+  return /事業内容/.test(text) && /(担当業務|業務内容|実績)/.test(text);
+}
+
+/** 行テキストの「ラベル：既定値」をトークン化（純粋関数）。例: 資本金：不明 → 資本金：{{会社_資本金|不明}} */
+function tokenizeCompanyLine_(line) {
+  return line.replace(/(事業内容|資本金|売上高|従業員数|上場|設立|雇用形態)([：:])\s*([^　\s]*)/g, function (m, label, colon, def) {
+    if (/\{\{/.test(def)) return m;
+    var name = label === '設立' ? '' : label;
+    if (!name) return m;
+    return label + colon + '{{会社_' + name + (def ? '|' + def : '') + '}}';
+  });
+}
+
+/** 会社枠の表にトークンを入れる。入れた数を返す */
+function tokenizeCompanyTable_(table) {
+  var n = 0;
+  // 先頭行が空（網掛けの見出し行）なら会社見出し
+  var first = table.getRow(0);
+  if (nz_(first.getText()) === '') { first.getCell(0).setText('{{会社_見出し}}'); n++; }
+  var paras = [];
+  for (var r = 0; r < table.getNumRows(); r++) {
+    var row = table.getRow(r);
+    for (var c = 0; c < row.getNumCells(); c++) {
+      var cell = row.getCell(c);
+      for (var k = 0; k < cell.getNumChildren(); k++) {
+        var el = cell.getChild(k);
+        if (el.getType() === DocumentApp.ElementType.PARAGRAPH) paras.push(el.asParagraph());
+      }
+    }
+  }
+  paras.forEach(function (p, i) {
+    var t = p.getText();
+    var t2 = tokenizeCompanyLine_(t);
+    if (t2 !== t) { p.setText(t2); n++; return; }
+    var head = t.replace(/\s/g, '');
+    var key = /^【(担当業務|業務内容)】$/.test(head) ? '会社_担当業務' : /^【実績/.test(head) ? '会社_実績' : '';
+    if (!key || i + 1 >= paras.length) return;
+    var next = paras[i + 1];
+    if (/^[・\s　]*$/.test(next.getText())) { next.setText('{{' + key + '}}'); n++; }
+  });
+  return n;
+}
+
+/** 段落のラベルにトークンを入れる（見出し → 次の空段落、「ラベル：」→ 右に追記）。入れた数を返す */
+function insertParagraphTokens_(sec, used) {
+  var count = 0;
+  var n = sec.getNumChildren();
   for (var i = 0; i < n; i++) {
-    var el = body.getChild(i);
+    var el = sec.getChild(i);
     if (el.getType() !== DocumentApp.ElementType.PARAGRAPH) continue;
     var p = el.asParagraph();
     var text = nz_(p.getText());
-    var inline = text.match(/^(氏\s*名|作成日|作成)\s*[:：]\s*$/);
-    if (inline) {
-      var tk = /氏/.test(inline[1]) ? '{{氏名}}' : '{{作成日}}';
-      if (!used[tk]) { p.appendText(tk); used[tk] = true; count++; }
-      continue;
-    }
-    var token2 = resolveLabelToken_(text.replace(/^[■□●◆【\[]+|[】\]]+$/g, ''), '', used);
-    if (!isBlockToken_(token2)) continue;
-    var nextEl = i + 1 < n ? body.getChild(i + 1) : null;
+    if (!text || text.indexOf('{{') >= 0) continue;
+    var plan = paragraphTokenPlan_(text, used);
+    if (!plan) continue;
+    if (plan.mode === 'inline') { p.appendText(plan.append); count++; continue; }
+    var nextEl = i + 1 < n ? sec.getChild(i + 1) : null;
     if (nextEl && nextEl.getType() === DocumentApp.ElementType.PARAGRAPH && nz_(nextEl.asParagraph().getText()) === '') {
-      nextEl.asParagraph().setText(token2);
+      nextEl.asParagraph().setText(plan.token);
+    } else if (plan.colon) {
+      p.appendText(plan.token);
     } else {
-      body.insertParagraph(i + 1, token2);
+      sec.insertParagraph(i + 1, plan.token);
       n++; i++;
     }
     count++;
   }
-  doc.saveAndClose();
   return count;
+}
+
+/**
+ * 段落テキスト → どこにどのトークンを入れるか（純粋関数）。null なら何もしない。
+ *  「■職務要約」→ { mode:'block' }、「氏名：」→ { mode:'inline', append:'{{氏名}}' }、「性別」→ { mode:'inline', append:'：{{性別}}' }
+ */
+function paragraphTokenPlan_(text, used) {
+  var t = text.trim();
+  var colon = /[:：]\s*$/.test(t);
+  var label = t.replace(/^[■□●◆【\[]+|[】\]]+$/g, '').replace(/[:：]\s*$/, '');
+  var heading = /^[■□●◆【\[]/.test(t);
+  if (!colon && !heading && !/^[^\s　:：]{1,8}$/.test(t)) return null;
+  var token = resolveLabelToken_(label, '', used);
+  token = KL.PARAGRAPH_ALIASES[token] || token;
+  if (!token || listNameOfToken_(token)) return null;
+  if (isBlockToken_(token)) return { mode: 'block', token: token, colon: colon };
+  if (heading) return null;
+  var suffix = token === '{{年齢}}' ? '歳' : '';
+  return { mode: 'inline', token: token, append: (colon ? '' : '：') + token + suffix };
 }
 
 /** スプレッドシート版。ラベルの右隣の空セル、リストは次の行 */
@@ -1954,6 +2217,95 @@ function writeImportSheet_(ss, sources, errors, data, res) {
 }
 
 
+// ===== 49_TemplateRegistry.js =====
+/**
+ * テンプレート台帳（「テンプレート」シート）と、生成時のテンプレート選択。
+ *  1 行 = 1 テンプレート。スプレッドシートの用紙は「シート名」で使うタブを指定できる
+ *  （1 つのスプレッドシートに職務経歴書のテンプレートをシートごとに並べている場合など）。
+ */
+
+function templateSheet_(ss) {
+  var sh = ss.getSheetByName(KL.SHEET.TEMPLATES);
+  if (!sh) {
+    sh = ss.insertSheet(KL.SHEET.TEMPLATES);
+    sh.getRange(1, 1, 1, KL.TEMPLATE_HEADERS.length).setValues([KL.TEMPLATE_HEADERS]).setFontWeight('bold').setBackground('#e8eaed');
+    sh.getRange(1, 1).setNote('履歴書 / 職務経歴書 / 推薦書');
+    sh.getRange(1, 4).setNote('スプレッドシートの用紙で、使うシート（タブ）の名前。空欄ならファイル全体');
+    sh.getRange(1, 5).setNote('○ を付けたものが選択ダイアログの既定になる');
+    var rule = SpreadsheetApp.newDataValidation().requireValueInList(['履歴書', '職務経歴書', '推薦書'], true).setAllowInvalid(true).build();
+    sh.getRange(2, 1, 200, 1).setDataValidation(rule);
+    sh.setColumnWidth(1, 100).setColumnWidth(2, 220).setColumnWidth(3, 360).setColumnWidth(4, 160).setColumnWidth(5, 60);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+/** 台帳を読む: [{ row, kind, name, spec, sheetName, isDefault }] */
+function readTemplates_(ss) {
+  var sh = ss.getSheetByName(KL.SHEET.TEMPLATES);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, KL.TEMPLATE_HEADERS.length).getValues().map(function (r, i) {
+    return { row: i + 2, kind: nz_(r[0]), name: nz_(r[1]) || nz_(r[3]) || nz_(r[2]), spec: nz_(r[2]), sheetName: nz_(r[3]), isDefault: /^(○|〇|◯|はい|yes|true|1)$/i.test(nz_(r[4])) };
+  }).filter(function (t) { return t.kind && t.spec; });
+}
+
+/** シート名・ファイル名から種別を推定（純粋関数）。分からなければ fallback */
+function guessTemplateKind_(name, fallback) {
+  var n = nz_(name);
+  if (/推薦/.test(n)) return '推薦書';
+  if (/(職務|経歴書|職歴|キャリア|CV)/i.test(n)) return '職務経歴書';
+  if (/履歴/.test(n)) return '履歴書';
+  return fallback || '';
+}
+
+/** 用紙を台帳に登録。スプレッドシートは各シートを 1 行ずつ。登録数を返す */
+function registerTemplates_(ss, spec, fallbackKind) {
+  var tpl = resolveTemplateFile_(spec);
+  var sh = templateSheet_(ss);
+  var existing = readTemplates_(ss).map(function (t) { return extractDriveId_(t.spec) + '#' + t.sheetName; });
+  var rows = [];
+  if (tpl.mime === MIME_.GSHEET) {
+    SpreadsheetApp.openById(tpl.id).getSheets().forEach(function (tab) {
+      rows.push([guessTemplateKind_(tab.getName(), guessTemplateKind_(tpl.name, fallbackKind)), tab.getName(), tpl.id, tab.getName(), '']);
+    });
+  } else {
+    rows.push([guessTemplateKind_(tpl.name, fallbackKind), tpl.name.replace(/\.(docx?|xlsx?)$/i, ''), tpl.id, '', '']);
+  }
+  rows = rows.filter(function (r) { return existing.indexOf(r[2] + '#' + r[3]) < 0; });
+  if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, KL.TEMPLATE_HEADERS.length).setValues(rows);
+  return rows.length;
+}
+
+/**
+ * 生成に使うテンプレートを決める。
+ *  戻り値: undefined（台帳に無い → 設定シートの値を使う）| null（標準レイアウト）| { spec, sheetName, name }
+ *  台帳に 2 件以上あればダイアログで番号を選ぶ（0 = 標準レイアウト）。前回の選択を既定にする。
+ */
+function chooseTemplate_(ss, kind, ui) {
+  var list = readTemplates_(ss).filter(function (t) { return t.kind === kind; });
+  if (list.length === 0) return undefined;
+  if (list.length === 1) return list[0];
+  var props = PropertiesService.getUserProperties();
+  var lastKey = 'LAST_TEMPLATE_' + kind;
+  var last = props.getProperty(lastKey);
+  var defIdx = 0;
+  list.forEach(function (t, i) { if (t.isDefault && defIdx === 0) defIdx = i + 1; });
+  list.forEach(function (t, i) { if (last && last === t.spec + '#' + t.sheetName) defIdx = i + 1; });
+  if (defIdx === 0) defIdx = 1;
+  if (!ui) return list[defIdx - 1];
+  var lines = ['0. 標準レイアウト'].concat(list.map(function (t, i) { return (i + 1) + '. ' + t.name + (i + 1 === defIdx ? '（既定）' : ''); }));
+  var res = ui.prompt(kind + 'のテンプレート', lines.join('\n') + '\n\n番号を入力してください（空欄 → 既定）', ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) throw new Error('キャンセルしました。');
+  var v = toInt_(res.getResponseText());
+  if (v === null) v = defIdx;
+  if (v < 0 || v > list.length) throw new Error('番号が範囲外です: ' + res.getResponseText());
+  if (v === 0) { props.setProperty(lastKey, ''); return null; }
+  var chosen = list[v - 1];
+  props.setProperty(lastKey, chosen.spec + '#' + chosen.sheetName);
+  return chosen;
+}
+
+
 // ===== 50_Rirekisho.js =====
 /**
  * 履歴書（JIS 様式ベース、A4 縦）
@@ -2025,8 +2377,10 @@ function composeRirekisho_(model) {
   };
 }
 
-function buildRirekishoDoc_(model, ss, folder) {
-  if (nz_(model.settings['履歴書テンプレート'])) return buildFromTemplate_(model, '履歴書', folder);
+function buildRirekishoDoc_(model, ss, folder, tpl) {
+  // tpl: undefined → 設定シートの値 / null → 標準レイアウト / { spec, sheetName } → 台帳で選んだ用紙
+  if (tpl) return buildFromTemplate_(model, '履歴書', folder, tpl);
+  if (tpl === undefined && nz_(model.settings['履歴書テンプレート'])) return buildFromTemplate_(model, '履歴書', folder);
   var d = composeRirekisho_(model);
   var font = model.settings['履歴書フォント'] || 'Noto Serif JP';
   var doc = newA4Doc_(outputFileName_(model, '履歴書'), font, 10);
@@ -2226,8 +2580,10 @@ function runSuisenChecks_(model) {
   return out;
 }
 
-function buildSuisenDoc_(model, ss, folder) {
-  if (nz_(model.settings['推薦書テンプレート'])) return buildFromTemplate_(model, '推薦書', folder);
+function buildSuisenDoc_(model, ss, folder, tpl) {
+  // tpl: undefined → 設定シートの値 / null → 標準レイアウト / { spec, sheetName } → 台帳で選んだ用紙
+  if (tpl) return buildFromTemplate_(model, '推薦書', folder, tpl);
+  if (tpl === undefined && nz_(model.settings['推薦書テンプレート'])) return buildFromTemplate_(model, '推薦書', folder);
   var d = composeSuisen_(model);
   var font = model.settings['推薦書フォント'] || 'Noto Sans JP';
   var doc = newA4Doc_(outputFileName_(model, '推薦書'), font, 10.5);
@@ -2354,13 +2710,16 @@ function composeShokumu_(model) {
           name: p.name,
           period: formatPeriod_(p.startY, p.startM, p.endY, p.endM),
           role: lines_(p.role),
-          overview: overview
+          overview: overview,
+          tasksRaw: p.tasks.map(function (tk) { return tk.replace(/^[・\-•]\s*/, ''); }),
+          resultsRaw: lines_(p.results).map(function (x) { return x.replace(/^[・\-•]\s*/, ''); })
         };
       });
     return {
       header: formatPeriod_(j.startY, j.startM, j.endY, j.endM) + '　' + j.company,
       period: formatPeriod_(j.startY, j.startM, j.endY, j.endM),
       company: j.company,
+      employment: j.employment, business: j.business, capital: j.capital, sales: j.sales, listing: j.listing, employees: j.employees,
       info: info,
       position: j.position,
       projects: projects
@@ -2403,8 +2762,10 @@ function composeShokumu_(model) {
   };
 }
 
-function buildShokumuDoc_(model, ss, folder) {
-  if (nz_(model.settings['職務経歴書テンプレート'])) return buildFromTemplate_(model, '職務経歴書', folder);
+function buildShokumuDoc_(model, ss, folder, tpl) {
+  // tpl: undefined → 設定シートの値 / null → 標準レイアウト / { spec, sheetName } → 台帳で選んだ用紙
+  if (tpl) return buildFromTemplate_(model, '職務経歴書', folder, tpl);
+  if (tpl === undefined && nz_(model.settings['職務経歴書テンプレート'])) return buildFromTemplate_(model, '職務経歴書', folder);
   var d = composeShokumu_(model);
   var font = model.settings['職務経歴書フォント'] || 'Noto Sans JP';
   var doc = newA4Doc_(outputFileName_(model, '職務経歴書'), font, 10);
@@ -2821,13 +3182,14 @@ function writeAiSheet_(ss, prompt, result) {
 
 function setupSheets_(ss, withSample) {
   var order = [KL.SHEET.BASIC, KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS, KL.SHEET.SKILLS,
-    KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS, KL.SHEET.TEXTS, KL.SHEET.SUISEN, KL.SHEET.ATTACH, KL.SHEET.SETTINGS];
+    KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS, KL.SHEET.TEXTS, KL.SHEET.SUISEN, KL.SHEET.ATTACH, KL.SHEET.TEMPLATES, KL.SHEET.SETTINGS];
 
   setupKeyValueSheet_(ss, KL.SHEET.BASIC, KL.BASIC_KEYS, withSample ? sampleBasic_() : null);
   setupKeyValueSheet_(ss, KL.SHEET.TEXTS, KL.TEXT_KEYS, withSample ? sampleTexts_() : null);
   setupKeyValueSheet_(ss, KL.SHEET.SUISEN, KL.SUISEN_KEYS, withSample ? sampleSuisen_() : null);
   setupKeyValueSheet_(ss, KL.SHEET.SETTINGS, KL.SETTING_KEYS, null);
   attachSheet_(ss);
+  templateSheet_(ss);
 
   var samples = withSample ? sampleTables_() : {};
   [KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS, KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS]
@@ -3042,6 +3404,7 @@ function onOpen() {
       .addItem('添削プロンプトだけ作る（Gemini に貼る）', 'menuAiPrompt')
       .addItem('APIキーを設定', 'menuSetApiKey'))
     .addSubMenu(ui.createMenu('⑤ 会社規定の用紙（テンプレート）')
+      .addItem('テンプレートを登録（スプレッドシートは各シート）', 'menuRegisterTemplates')
       .addItem('テンプレートを診断', 'menuDiagnoseTemplate')
       .addItem('用紙にトークンを自動挿入（コピーを作成）', 'menuAutoInsertTokens')
       .addItem('トークン一覧を表示', 'menuTokenList'))
@@ -3125,11 +3488,14 @@ function buildAndNotify_(kinds) {
   if (!guardErrors_(ss, model, kinds)) return;
   var builders = { '履歴書': buildRirekishoDoc_, '職務経歴書': buildShokumuDoc_, '推薦書': buildSuisenDoc_ };
   try {
+    // 台帳にテンプレートが複数あれば、先に選んでもらう（保存先を作る前に）
+    var chosen = {};
+    kinds.forEach(function (k) { chosen[k] = chooseTemplate_(ss, k, ui); });
     var folder = chooseOutputFolder_(ss, model.settings, ui, nz_(model.basic['氏名']));
     if (!folder) return;
     var msg = ['保存先: ' + folder.getName() + '\n' + folder.getUrl()];
     kinds.forEach(function (k) {
-      var r = builders[k](model, ss, folder);
+      var r = builders[k](model, ss, folder, chosen[k]);
       msg.push(k + ':\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : ''));
     });
     ui.alert('生成完了', msg.join('\n\n'), ui.ButtonSet.OK);
@@ -3355,6 +3721,24 @@ function menuAutoInsertTokens() {
   }
 }
 
+function menuRegisterTemplates() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var res = ui.prompt('テンプレートを登録',
+    '用紙の URL か ID を入力してください。\n' +
+    'スプレッドシートの場合は、シート（タブ）ごとに 1 件ずつ登録します。\n' +
+    '種別（履歴書 / 職務経歴書 / 推薦書）はシート名・ファイル名から推定します。違っていたら「テンプレート」シートで直してください。',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK || !nz_(res.getResponseText())) return;
+  try {
+    var n = registerTemplates_(ss, res.getResponseText(), '職務経歴書');
+    ss.setActiveSheet(templateSheet_(ss));
+    ui.alert('登録しました', n + ' 件を「テンプレート」シートに追加しました。\n同じ種別が 2 件以上あると、生成時に番号で選べます（○ を付けたものが既定）。', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('登録できません', String(e.message || e), ui.ButtonSet.OK);
+  }
+}
+
 function menuTokenList() {
   var L = ['用紙に書くトークン（{{ }} 付き）', ''];
   L.push('【単一値】');
@@ -3364,6 +3748,11 @@ function menuTokenList() {
   Object.keys(KL.TOKENS_LIST).forEach(function (n) {
     L.push(KL.TOKENS_LIST[n].cols.map(function (c) { return '{{' + n + '_' + c + '}}'; }).join(' ') + '　' + KL.TOKENS_LIST[n].note);
   });
+  L.push('');
+  L.push('【会社枠】職務経歴の枠（ドキュメントは表、スプレッドシートは行のまとまり）に置くと、会社の数だけ複製');
+  KL.TOKENS_COMPANY.forEach(function (t) { L.push('{{' + t[0] + '}}' + (t[1] ? '　' + t[1] : '')); });
+  L.push('');
+  L.push('【既定値】{{名前|既定値}} と書くと値が空のとき既定値を出す（例: {{会社_上場|未上場}}）');
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName('トークン一覧') || ss.insertSheet('トークン一覧');
   sh.clear();
