@@ -118,35 +118,48 @@ function fillDocsTemplate_(docId, values) {
   Object.keys(KL.TOKENS_LIST).forEach(function (name) {
     var cols = KL.TOKENS_LIST[name].cols;
     var entries = values.lists[name] || [];
-    var anyPattern = '\\{\\{' + name + '_(' + cols.join('|') + ')\\}\\}';
-    var found = body.findText(anyPattern);
-    if (!found) return;
-    var row = findAncestor_(found.getElement(), DocumentApp.ElementType.TABLE_ROW);
-    if (!row) {
-      // 表の外にある場合はテキストとして展開
-      var joined = entries.map(function (e) { return e.filter(function (x) { return x !== ''; }).join(' '); }).join('\n');
-      containers.forEach(function (c) { c.replaceText(anyPattern, joined); });
+    var slots = findListSlotsDoc_(body, name, cols);
+    // 表の外に置かれたトークンは、内容をまとめたテキストにする
+    var joined = entries.map(function (e) { return e.filter(function (x) { return x !== ''; }).join(' '); }).join('\n');
+    if (slots.length === 0) {
+      containers.forEach(function (c) {
+        cols.forEach(function (col, j) { replaceLiteral_(c, name + '_' + col, j === cols.length - 1 ? joined : ''); });
+      });
       return;
     }
-    row = row.asTableRow();
-    var table = row.getParent().asTable();
-    var idx = table.getChildIndex(row);
-    var proto = row.copy();
-    if (entries.length === 0) {
-      cols.forEach(function (c) { row.replaceText(tokenRegex_(name + '_' + c), ''); });
+    var fill = function (row, entry) {
+      cols.forEach(function (col, j) { replaceLiteral_(row, name + '_' + col, entry ? (entry[j] || '') : ''); });
+    };
+    var last = slots[slots.length - 1];
+    var proto = last.copy();
+    if (slots.length === 1) {
+      // トークン行が 1 行: 行を複製して件数分に増やす
+      var table = last.getParent().asTable();
+      var idx = table.getChildIndex(last);
+      if (entries.length === 0) { fill(last, null); return; }
+      entries.forEach(function (entry, i) {
+        var target = i === 0 ? last : table.insertTableRow(idx + i, proto.copy());
+        fill(target, entry);
+      });
       return;
     }
-    entries.forEach(function (entry, i) {
-      var target = i === 0 ? row : table.insertTableRow(idx + i, proto.copy());
-      cols.forEach(function (c, j) { target.replaceText(tokenRegex_(name + '_' + c), entry[j] || ''); });
-    });
+    // トークン行が複数（罫線の行数が決まった用紙）: 上から順に埋め、足りなければ最後の行の下に追加
+    slots.forEach(function (row, i) { fill(row, entries[i]); });
+    if (entries.length > slots.length) {
+      var t2 = last.getParent().asTable();
+      var base = t2.getChildIndex(last);
+      for (var k = slots.length; k < entries.length; k++) {
+        var added = t2.insertTableRow(base + (k - slots.length) + 1, proto.copy());
+        fill(added, entries[k]);
+      }
+    }
   });
 
   // 写真
   var photo = body.findText(tokenRegex_('写真'));
   if (photo) {
     var para = findAncestor_(photo.getElement(), DocumentApp.ElementType.PARAGRAPH);
-    body.replaceText(tokenRegex_('写真'), '');
+    replaceLiteral_(body, '写真', '');
     if (para && values.photoId) {
       try {
         var img = para.asParagraph().appendInlineImage(DriveApp.getFileById(values.photoId).getBlob());
@@ -157,12 +170,67 @@ function fillDocsTemplate_(docId, values) {
 
   // 単一トークン
   Object.keys(values.single).forEach(function (k) {
-    var v = values.single[k];
-    containers.forEach(function (c) { c.replaceText(tokenRegex_(k), v); });
+    containers.forEach(function (c) { replaceLiteral_(c, k, values.single[k]); });
   });
   // 残ったトークンを消す
   containers.forEach(function (c) { c.replaceText('\\{\\{[^}]*\\}\\}', ''); });
   doc.saveAndClose();
+}
+
+/**
+ * {{name}} を value に「文字どおり」置き換える。
+ * replaceText は置換文字列の $ や \ を特殊扱いする可能性があるため、検索して削除→挿入する。
+ */
+function replaceLiteral_(container, name, value) {
+  var pattern = tokenRegex_(name);
+  var v = String(value === null || value === undefined ? '' : value).replace(/\{\{|\}\}/g, '');
+  var guard = 0;
+  var r = container.findText(pattern);
+  while (r && guard++ < 1000) {
+    var text = r.getElement().asText();
+    var start = r.getStartOffset();
+    text.deleteText(start, r.getEndOffsetInclusive());
+    if (v !== '') text.insertText(start, v);
+    r = container.findText(pattern);
+  }
+}
+
+/** 要素の位置（親からのインデックス列）。文書順の比較と同一判定に使う */
+function elPath_(el) {
+  var path = [];
+  var cur = el;
+  while (cur && cur.getParent && cur.getParent()) {
+    var parent = cur.getParent();
+    path.unshift(parent.getChildIndex(cur));
+    cur = parent;
+  }
+  return path;
+}
+
+function comparePath_(a, b) {
+  for (var i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return a.length - b.length;
+}
+
+/** 行リストトークンを含む表の行を文書順に列挙（同じ行は 1 回） */
+function findListSlotsDoc_(body, name, cols) {
+  var seen = {};
+  var slots = [];
+  cols.forEach(function (col) {
+    var pattern = tokenRegex_(name + '_' + col);
+    var r = body.findText(pattern);
+    while (r) {
+      var row = findAncestor_(r.getElement(), DocumentApp.ElementType.TABLE_ROW);
+      if (row) {
+        var path = elPath_(row);
+        var key = path.join('/');
+        if (!seen[key]) { seen[key] = true; slots.push({ row: row.asTableRow(), path: path }); }
+      }
+      r = body.findText(pattern, r);
+    }
+  });
+  slots.sort(function (a, b) { return comparePath_(a.path, b.path); });
+  return slots.map(function (x) { return x.row; });
 }
 
 function findAncestor_(el, type) {
@@ -184,12 +252,11 @@ function fillSheetsTemplate_(ssId, values) {
       var entries = values.lists[name] || [];
       cols.forEach(function (c, j) {
         var cells = sh.createTextFinder('{{' + name + '_' + c + '}}').matchEntireCell(false).findAll();
-        cells.forEach(function (cell) {
-          var r0 = cell.getRow(), c0 = cell.getColumn();
-          if (entries.length === 0) { cell.setValue(''); return; }
-          var colValues = entries.map(function (e) { return [e[j] || '']; });
-          sh.getRange(r0, c0, colValues.length, 1).setValues(colValues);
-        });
+        if (cells.length === 0) return;
+        cells.sort(function (x, y) { return x.getRow() - y.getRow() || x.getColumn() - y.getColumn(); });
+        var colValues = entries.map(function (e) { return e[j] || ''; });
+        var plan = planSheetListWrites_(cells.map(function (x) { return [x.getRow(), x.getColumn()]; }), colValues);
+        plan.forEach(function (w) { sh.getRange(w[0], w[1]).setValue(w[2]); });
       });
     });
     Object.keys(values.single).forEach(function (k) {
@@ -199,6 +266,25 @@ function fillSheetsTemplate_(ssId, values) {
     sh.createTextFinder('\\{\\{[^}]*\\}\\}').useRegularExpression(true).replaceAllWith('');
   });
   SpreadsheetApp.flush();
+}
+
+/**
+ * スプレッドシートの行リスト書き込み計画（純粋関数）。
+ *  slots: [[row, col], ...]（行順）。1 つなら下方向に展開、複数なら順に埋めて余りは最後の下に続ける。
+ *  戻り値: [[row, col, value], ...]
+ */
+function planSheetListWrites_(slots, values) {
+  var out = [];
+  if (slots.length === 0) return out;
+  if (slots.length === 1) {
+    if (values.length === 0) return [[slots[0][0], slots[0][1], '']];
+    values.forEach(function (v, i) { out.push([slots[0][0] + i, slots[0][1], v]); });
+    return out;
+  }
+  slots.forEach(function (s, i) { out.push([s[0], s[1], i < values.length ? values[i] : '']); });
+  var last = slots[slots.length - 1];
+  for (var k = slots.length; k < values.length; k++) out.push([last[0] + (k - slots.length) + 1, last[1], values[k]]);
+  return out;
 }
 
 // ---------------- 診断とトークン自動挿入
@@ -235,12 +321,36 @@ function templateText_(tpl) {
 /** ラベル文字列 → トークン（該当なしは ''） */
 function labelToToken_(label) {
   var s = nz_(label).replace(/[\s　※:：・()（）]/g, '');
-  if (!s || s.length > 14) return '';
+  if (!s || s.length > 40) return '';
+  if (/書$/.test(s) || /現在$/.test(s)) return ''; // 「職務経歴書」などのタイトル、「年 月 日現在」
   for (var i = 0; i < KL.LABEL_TO_TOKEN.length; i++) {
     var key = KL.LABEL_TO_TOKEN[i][0].replace(/[\s　・]/g, '');
     if (s.indexOf(key) === 0) return KL.LABEL_TO_TOKEN[i][1];
   }
   return '';
+}
+
+/**
+ * 文脈込みでトークンを決める（純粋関数）。
+ *  below: 直下のラベル。「ふりがな」の直下が現住所／連絡先なら、それぞれのふりがなにする
+ *  used : すでに入れた単一値トークン。連絡先欄の 2 つ目の「電話」などは入れない
+ */
+function resolveLabelToken_(label, below, used) {
+  var t = labelToToken_(label);
+  if (!t) return '';
+  if (t === '{{ふりがな}}') {
+    var b = labelToToken_(below);
+    if (b === '{{現住所}}') t = '{{現住所ふりがな}}';
+    else if (b === '{{連絡先}}') t = '{{連絡先ふりがな}}';
+  }
+  if (!listNameOfToken_(t) && used[t]) return '';
+  used[t] = true;
+  return t;
+}
+
+/** 右隣が埋まっているとき、直下や同じセルに入れてよい「文章欄」のトークン */
+function isBlockToken_(t) {
+  return ['{{志望動機}}', '{{本人希望}}', '{{職務要約}}', '{{自己PR}}', '{{経験能力}}', '{{職務経歴詳細}}'].indexOf(t) >= 0;
 }
 
 /** リスト系トークン {{学歴職歴_内容}} → 名前 */
@@ -249,19 +359,21 @@ function listNameOfToken_(token) {
   return m ? m[1] : '';
 }
 
-/** ドキュメントの表を走査し、ラベルの右隣（リストは次の行）にトークンを書く。挿入数を返す */
+/** ドキュメントを走査し、ラベルの右隣（リストは次の行、文章欄は直下）にトークンを書く。挿入数を返す */
 function autoInsertTokensDoc_(docId) {
   var doc = DocumentApp.openById(docId);
   var body = doc.getBody();
   var count = 0;
-  var tables = body.getTables();
-  tables.forEach(function (table) {
+  var used = {};
+  body.getTables().forEach(function (table) {
     var nRows = table.getNumRows();
     for (var r = 0; r < nRows; r++) {
       var row = table.getRow(r);
       var nCells = row.getNumCells();
       for (var c = 0; c < nCells; c++) {
-        var token = labelToToken_(row.getCell(c).getText());
+        var cell = row.getCell(c);
+        var below = (r + 1 < nRows && c < table.getRow(r + 1).getNumCells()) ? table.getRow(r + 1).getCell(c).getText() : '';
+        var token = resolveLabelToken_(cell.getText(), below, used);
         if (!token) continue;
         var listName = listNameOfToken_(token);
         if (listName) {
@@ -270,16 +382,47 @@ function autoInsertTokensDoc_(docId) {
           if (nz_(next.getText()) !== '') continue;
           var cols = KL.TOKENS_LIST[listName].cols;
           var n = next.getNumCells();
-          // 右端をお内容、その左 2 つを年・月とみなす
+          // 右端を内容、その左 2 つを年・月とみなす
           var map = n >= 3 ? [[n - 3, 0], [n - 2, 1], [n - 1, 2]] : [[n - 1, 2]];
           map.forEach(function (pair) { next.getCell(pair[0]).setText('{{' + listName + '_' + cols[pair[1]] + '}}'); count++; });
           r++; // 次の行は処理済み
         } else if (c + 1 < nCells && nz_(row.getCell(c + 1).getText()) === '') {
           row.getCell(c + 1).setText(token); count++;
+        } else if (isBlockToken_(token)) {
+          if (r + 1 < nRows && c < table.getRow(r + 1).getNumCells() && nz_(below) === '') {
+            table.getRow(r + 1).getCell(c).setText(token);
+          } else {
+            cell.appendParagraph(token);
+          }
+          count++;
         }
       }
     }
   });
+  // 表の外の見出し段落（職務経歴書に多い「■職務要約」「氏名：」など）
+  var n = body.getNumChildren();
+  for (var i = 0; i < n; i++) {
+    var el = body.getChild(i);
+    if (el.getType() !== DocumentApp.ElementType.PARAGRAPH) continue;
+    var p = el.asParagraph();
+    var text = nz_(p.getText());
+    var inline = text.match(/^(氏\s*名|作成日|作成)\s*[:：]\s*$/);
+    if (inline) {
+      var tk = /氏/.test(inline[1]) ? '{{氏名}}' : '{{作成日}}';
+      if (!used[tk]) { p.appendText(tk); used[tk] = true; count++; }
+      continue;
+    }
+    var token2 = resolveLabelToken_(text.replace(/^[■□●◆【\[]+|[】\]]+$/g, ''), '', used);
+    if (!isBlockToken_(token2)) continue;
+    var nextEl = i + 1 < n ? body.getChild(i + 1) : null;
+    if (nextEl && nextEl.getType() === DocumentApp.ElementType.PARAGRAPH && nz_(nextEl.asParagraph().getText()) === '') {
+      nextEl.asParagraph().setText(token2);
+    } else {
+      body.insertParagraph(i + 1, token2);
+      n++; i++;
+    }
+    count++;
+  }
   doc.saveAndClose();
   return count;
 }
@@ -288,11 +431,12 @@ function autoInsertTokensDoc_(docId) {
 function autoInsertTokensSheet_(ssId) {
   var ss = SpreadsheetApp.openById(ssId);
   var count = 0;
+  var used = {};
   ss.getSheets().forEach(function (sh) {
     var vals = sh.getDataRange().getValues();
     for (var r = 0; r < vals.length; r++) {
       for (var c = 0; c < vals[r].length; c++) {
-        var token = labelToToken_(vals[r][c]);
+        var token = resolveLabelToken_(vals[r][c], r + 1 < vals.length ? vals[r + 1][c] : '', used);
         if (!token) continue;
         var listName = listNameOfToken_(token);
         if (listName) {
@@ -312,7 +456,9 @@ function autoInsertTokensSheet_(ssId) {
           if (mCol >= 0) { sh.getRange(r + 2, mCol + 1).setValue('{{' + listName + '_' + cols[1] + '}}'); count++; }
           sh.getRange(r + 2, c + 1).setValue('{{' + listName + '_' + cols[2] + '}}'); count++;
         } else if (c + 1 < vals[r].length && nz_(vals[r][c + 1]) === '') {
-          sh.getRange(r + 1, c + 2).setValue(token); count++;
+          sh.getRange(r + 1, c + 2).setValue(token); vals[r][c + 1] = token; count++;
+        } else if (isBlockToken_(token) && r + 1 < vals.length && nz_(vals[r + 1][c]) === '') {
+          sh.getRange(r + 2, c + 1).setValue(token); vals[r + 1][c] = token; count++;
         }
       }
     }

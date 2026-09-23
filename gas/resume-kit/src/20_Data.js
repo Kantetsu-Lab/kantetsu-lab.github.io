@@ -53,10 +53,15 @@ function loadModel(ss) {
   var texts = readKeyValue_(ss, KL.SHEET.TEXTS);
   var settingsRaw = readKeyValue_(ss, KL.SHEET.SETTINGS);
 
+  // v1.0 の設定名からの引き継ぎ（セットアップ未実行でも動くように）
+  var legacy = KL.LEGACY_SETTINGS;
   var settings = {};
   KL.SETTING_KEYS.forEach(function (k) {
-    settings[k[0]] = nz_(settingsRaw[k[0]]) || k[1];
+    settings[k[0]] = nz_(settingsRaw[k[0]]) || nz_(settingsRaw[legacy[k[0]]]) || k[1];
   });
+  if (nz_(settingsRaw['ファイル名の接頭辞']) && !nz_(settingsRaw['ファイル名パターン'])) {
+    settings['ファイル名パターン'] = nz_(settingsRaw['ファイル名の接頭辞']) + settings['ファイル名パターン'];
+  }
 
   var basic = {};
   KL.BASIC_KEYS.forEach(function (k) {

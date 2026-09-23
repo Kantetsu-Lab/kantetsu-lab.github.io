@@ -35,12 +35,20 @@ function setupKeyValueSheet_(ss, name, keys, sampleMap) {
   var existing = {};
   var rows = sh.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) existing[nz_(rows[i][0])] = i + 1;
+  var legacyValue = function (key) {
+    if (name === KL.SHEET.SETTINGS && key === 'ファイル名パターン') {
+      var pr = existing['ファイル名の接頭辞'] ? nz_(rows[existing['ファイル名の接頭辞'] - 1][1]) : '';
+      return pr ? pr + '{氏名}様_{種別}' : '';
+    }
+    var old = name === KL.SHEET.SETTINGS ? KL.LEGACY_SETTINGS[key] : null;
+    return old && existing[old] ? nz_(rows[existing[old] - 1][1]) : '';
+  };
   keys.forEach(function (k) {
     var r = existing[k[0]];
     if (!r) {
       r = sh.getLastRow() + 1;
       sh.getRange(r, 1).setValue(k[0]);
-      var v = sampleMap && sampleMap[k[0]] !== undefined ? sampleMap[k[0]] : k[1];
+      var v = sampleMap && sampleMap[k[0]] !== undefined ? sampleMap[k[0]] : (legacyValue(k[0]) || k[1]);
       sh.getRange(r, 2).setValue(v);
     } else if (sampleMap && nz_(sh.getRange(r, 2).getValue()) === '' && sampleMap[k[0]] !== undefined) {
       sh.getRange(r, 2).setValue(sampleMap[k[0]]);

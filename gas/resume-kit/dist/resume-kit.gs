@@ -1,7 +1,7 @@
 /*
  * Kantetsu Lab 履歴書・職務経歴書ジェネレーター（Google Apps Script）
  * このファイルは gas/resume-kit/src/*.js から自動生成されています。直接編集せず src を直して `node gas/resume-kit/bundle.mjs` を実行してください。
- * generated: 2026-09-13T21:51:58.094Z
+ * generated: 2026-09-23T01:00:31.755Z
  */
 // ===== 00_Config.js =====
 /**
@@ -11,7 +11,7 @@
 
 var KL = KL || {};
 
-KL.VERSION = '1.0.0';
+KL.VERSION = '1.1.0';
 KL.MENU_TITLE = '履歴書ツール';
 
 // シート名
@@ -142,6 +142,9 @@ KL.REVIEW_RULES = [
   '8. 出力形式: (a) 総評3行 (b) 重大な修正（事実・整合性）(c) 改善提案（優先度順、修正前→修正後の文例つき）(d) 面接で突っ込まれそうな点 の4部構成。日本語で。'
 ];
 
+// v1.0 の設定名 → 新しい設定名（値の引き継ぎ用）
+KL.LEGACY_SETTINGS = { '出力フォルダ': '出力フォルダID', 'Claudeモデル': 'AIモデル' };
+
 // ---- テンプレート（会社規定の用紙）用トークン
 // 単一値トークン: {{氏名}} のように用紙に書いておくと置換される
 KL.TOKENS_SINGLE = [
@@ -163,7 +166,7 @@ KL.TOKENS_LIST = {
 };
 // 用紙のラベル → トークン（トークン自動挿入の手掛かり）。前方一致・空白無視
 KL.LABEL_TO_TOKEN = [
-  ['氏名', '{{氏名}}'], ['ふりがな', '{{ふりがな}}'], ['フリガナ', '{{ふりがな}}'], ['生年月日', '{{生年月日}}'], ['性別', '{{性別}}'],
+  ['氏名', '{{氏名}}'], ['作成日', '{{作成日}}'], ['ふりがな', '{{ふりがな}}'], ['フリガナ', '{{ふりがな}}'], ['生年月日', '{{生年月日}}'], ['性別', '{{性別}}'],
   ['現住所', '{{現住所}}'], ['住所', '{{現住所}}'], ['電話', '{{電話}}'], ['TEL', '{{電話}}'], ['携帯', '{{携帯}}'], ['メール', '{{メール}}'], ['E-mail', '{{メール}}'], ['Email', '{{メール}}'],
   ['連絡先', '{{連絡先}}'], ['通勤時間', '{{通勤時間}}'], ['扶養家族', '{{扶養家族数}}'], ['配偶者の扶養義務', '{{配偶者の扶養義務}}'], ['配偶者', '{{配偶者}}'],
   ['志望の動機', '{{志望動機}}'], ['志望動機', '{{志望動機}}'], ['本人希望', '{{本人希望}}'], ['職務要約', '{{職務要約}}'], ['職務概要', '{{職務要約}}'], ['自己PR', '{{自己PR}}'],
@@ -383,10 +386,15 @@ function loadModel(ss) {
   var texts = readKeyValue_(ss, KL.SHEET.TEXTS);
   var settingsRaw = readKeyValue_(ss, KL.SHEET.SETTINGS);
 
+  // v1.0 の設定名からの引き継ぎ（セットアップ未実行でも動くように）
+  var legacy = KL.LEGACY_SETTINGS;
   var settings = {};
   KL.SETTING_KEYS.forEach(function (k) {
-    settings[k[0]] = nz_(settingsRaw[k[0]]) || k[1];
+    settings[k[0]] = nz_(settingsRaw[k[0]]) || nz_(settingsRaw[legacy[k[0]]]) || k[1];
   });
+  if (nz_(settingsRaw['ファイル名の接頭辞']) && !nz_(settingsRaw['ファイル名パターン'])) {
+    settings['ファイル名パターン'] = nz_(settingsRaw['ファイル名の接頭辞']) + settings['ファイル名パターン'];
+  }
 
   var basic = {};
   KL.BASIC_KEYS.forEach(function (k) {
@@ -629,6 +637,14 @@ function runChecks(model) {
   else if (pc < 200 || pc > 700) add('WARN', KL.SHEET.TEXTS, '自己PR', pc + '字です。300〜600字が目安。');
   if (model.texts.summary && !hasNumber_(model.texts.summary)) add('WARN', KL.SHEET.TEXTS, '職務要約', '数値実績がありません。冒頭で読み手を掴むために 1 つは入れます。');
 
+  // ---- 設定
+  var st = model.settings || {};
+  ['履歴書テンプレート', '職務経歴書テンプレート'].forEach(function (k) {
+    if (nz_(st[k]) && !extractDriveId_(st[k])) add('ERROR', KL.SHEET.SETTINGS, k, 'URL か ID として読めません。');
+  });
+  if (nz_(st['AIプロバイダ']) && !/^(gemini|claude)$/i.test(nz_(st['AIプロバイダ']))) add('WARN', KL.SHEET.SETTINGS, 'AIプロバイダ', 'gemini か claude を指定してください。');
+  if (nz_(st['ファイル名パターン']) && st['ファイル名パターン'].indexOf('{種別}') < 0) add('INFO', KL.SHEET.SETTINGS, 'ファイル名パターン', '{種別} が無いため末尾に自動で付けます（履歴書と職務経歴書が同名になるのを防ぐため）。');
+
   // ---- 全体: 和暦・全角数字
   var allText = [b['現住所'], model.texts.summary, model.texts.pr]
     .concat(model.projects.map(function (p) { return p.overview + p.tasks.join('') + p.results; }))
@@ -741,12 +757,22 @@ function newTable_(container, rows, cols, widths, borderWidth) {
   return table;
 }
 
-/** 行の cell[from..to] を水平結合して結合後のセルを返す */
-function mergeCells_(row, from, to) {
-  for (var i = to; i > from; i--) {
-    row.getCell(from + 1).merge();
-  }
-  return row.getCell(from);
+/** コンテナ末尾の空段落（表の直後に自動で入るもの）を最小化する */
+function shrinkTrailingGap_(container) {
+  var n = container.getNumChildren();
+  if (n === 0) return;
+  var last = container.getChild(n - 1);
+  if (last.getType() !== DocumentApp.ElementType.PARAGRAPH) return;
+  var p = last.asParagraph();
+  if (p.getText() !== '') return;
+  p.editAsText().setFontSize(1);
+  p.setSpacingBefore(0).setSpacingAfter(0).setLineSpacing(1);
+}
+
+/** 直前の表と隙間なく積む表（間に自動で入る空段落を最小化してから追加） */
+function newStackedTable_(container, rows, cols, widths, borderWidth) {
+  shrinkTrailingGap_(container);
+  return newTable_(container, rows, cols, widths, borderWidth);
 }
 
 /** 行の最小高さを設定 */
@@ -805,7 +831,7 @@ function chooseOutputFolder_(ss, settings, ui) {
   else {
     folder = resolveFolder_(spec);
     if (!folder) {
-      if (extractDriveId_(spec) && /^[-\w]{25,}$/.test(spec)) throw new Error('フォルダが見つかりません: ' + spec);
+      if (/^https?:\/\//.test(spec) || /^[-\w]{25,}$/.test(spec)) throw new Error('フォルダが見つからないか、アクセス権がありません: ' + spec);
       folder = DriveApp.getRootFolder().createFolder(spec);
     }
   }
@@ -846,6 +872,8 @@ function finalizeDoc_(doc, folder, settings) {
 /** ファイル名: 設定「ファイル名パターン」({氏名} {種別} {日付}) */
 function outputFileName_(model, kind) {
   var pattern = nz_(model.settings['ファイル名パターン']) || '{氏名}様_{種別}';
+  // 種別が無いと履歴書と職務経歴書が同名になり、PDF の上書きで互いを消してしまう
+  if (pattern.indexOf('{種別}') < 0) pattern += '_{種別}';
   return pattern
     .replace(/\{氏名\}/g, nz_(model.basic['氏名']))
     .replace(/\{種別\}/g, kind)
@@ -975,35 +1003,48 @@ function fillDocsTemplate_(docId, values) {
   Object.keys(KL.TOKENS_LIST).forEach(function (name) {
     var cols = KL.TOKENS_LIST[name].cols;
     var entries = values.lists[name] || [];
-    var anyPattern = '\\{\\{' + name + '_(' + cols.join('|') + ')\\}\\}';
-    var found = body.findText(anyPattern);
-    if (!found) return;
-    var row = findAncestor_(found.getElement(), DocumentApp.ElementType.TABLE_ROW);
-    if (!row) {
-      // 表の外にある場合はテキストとして展開
-      var joined = entries.map(function (e) { return e.filter(function (x) { return x !== ''; }).join(' '); }).join('\n');
-      containers.forEach(function (c) { c.replaceText(anyPattern, joined); });
+    var slots = findListSlotsDoc_(body, name, cols);
+    // 表の外に置かれたトークンは、内容をまとめたテキストにする
+    var joined = entries.map(function (e) { return e.filter(function (x) { return x !== ''; }).join(' '); }).join('\n');
+    if (slots.length === 0) {
+      containers.forEach(function (c) {
+        cols.forEach(function (col, j) { replaceLiteral_(c, name + '_' + col, j === cols.length - 1 ? joined : ''); });
+      });
       return;
     }
-    row = row.asTableRow();
-    var table = row.getParent().asTable();
-    var idx = table.getChildIndex(row);
-    var proto = row.copy();
-    if (entries.length === 0) {
-      cols.forEach(function (c) { row.replaceText(tokenRegex_(name + '_' + c), ''); });
+    var fill = function (row, entry) {
+      cols.forEach(function (col, j) { replaceLiteral_(row, name + '_' + col, entry ? (entry[j] || '') : ''); });
+    };
+    var last = slots[slots.length - 1];
+    var proto = last.copy();
+    if (slots.length === 1) {
+      // トークン行が 1 行: 行を複製して件数分に増やす
+      var table = last.getParent().asTable();
+      var idx = table.getChildIndex(last);
+      if (entries.length === 0) { fill(last, null); return; }
+      entries.forEach(function (entry, i) {
+        var target = i === 0 ? last : table.insertTableRow(idx + i, proto.copy());
+        fill(target, entry);
+      });
       return;
     }
-    entries.forEach(function (entry, i) {
-      var target = i === 0 ? row : table.insertTableRow(idx + i, proto.copy());
-      cols.forEach(function (c, j) { target.replaceText(tokenRegex_(name + '_' + c), entry[j] || ''); });
-    });
+    // トークン行が複数（罫線の行数が決まった用紙）: 上から順に埋め、足りなければ最後の行の下に追加
+    slots.forEach(function (row, i) { fill(row, entries[i]); });
+    if (entries.length > slots.length) {
+      var t2 = last.getParent().asTable();
+      var base = t2.getChildIndex(last);
+      for (var k = slots.length; k < entries.length; k++) {
+        var added = t2.insertTableRow(base + (k - slots.length) + 1, proto.copy());
+        fill(added, entries[k]);
+      }
+    }
   });
 
   // 写真
   var photo = body.findText(tokenRegex_('写真'));
   if (photo) {
     var para = findAncestor_(photo.getElement(), DocumentApp.ElementType.PARAGRAPH);
-    body.replaceText(tokenRegex_('写真'), '');
+    replaceLiteral_(body, '写真', '');
     if (para && values.photoId) {
       try {
         var img = para.asParagraph().appendInlineImage(DriveApp.getFileById(values.photoId).getBlob());
@@ -1014,12 +1055,67 @@ function fillDocsTemplate_(docId, values) {
 
   // 単一トークン
   Object.keys(values.single).forEach(function (k) {
-    var v = values.single[k];
-    containers.forEach(function (c) { c.replaceText(tokenRegex_(k), v); });
+    containers.forEach(function (c) { replaceLiteral_(c, k, values.single[k]); });
   });
   // 残ったトークンを消す
   containers.forEach(function (c) { c.replaceText('\\{\\{[^}]*\\}\\}', ''); });
   doc.saveAndClose();
+}
+
+/**
+ * {{name}} を value に「文字どおり」置き換える。
+ * replaceText は置換文字列の $ や \ を特殊扱いする可能性があるため、検索して削除→挿入する。
+ */
+function replaceLiteral_(container, name, value) {
+  var pattern = tokenRegex_(name);
+  var v = String(value === null || value === undefined ? '' : value).replace(/\{\{|\}\}/g, '');
+  var guard = 0;
+  var r = container.findText(pattern);
+  while (r && guard++ < 1000) {
+    var text = r.getElement().asText();
+    var start = r.getStartOffset();
+    text.deleteText(start, r.getEndOffsetInclusive());
+    if (v !== '') text.insertText(start, v);
+    r = container.findText(pattern);
+  }
+}
+
+/** 要素の位置（親からのインデックス列）。文書順の比較と同一判定に使う */
+function elPath_(el) {
+  var path = [];
+  var cur = el;
+  while (cur && cur.getParent && cur.getParent()) {
+    var parent = cur.getParent();
+    path.unshift(parent.getChildIndex(cur));
+    cur = parent;
+  }
+  return path;
+}
+
+function comparePath_(a, b) {
+  for (var i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return a.length - b.length;
+}
+
+/** 行リストトークンを含む表の行を文書順に列挙（同じ行は 1 回） */
+function findListSlotsDoc_(body, name, cols) {
+  var seen = {};
+  var slots = [];
+  cols.forEach(function (col) {
+    var pattern = tokenRegex_(name + '_' + col);
+    var r = body.findText(pattern);
+    while (r) {
+      var row = findAncestor_(r.getElement(), DocumentApp.ElementType.TABLE_ROW);
+      if (row) {
+        var path = elPath_(row);
+        var key = path.join('/');
+        if (!seen[key]) { seen[key] = true; slots.push({ row: row.asTableRow(), path: path }); }
+      }
+      r = body.findText(pattern, r);
+    }
+  });
+  slots.sort(function (a, b) { return comparePath_(a.path, b.path); });
+  return slots.map(function (x) { return x.row; });
 }
 
 function findAncestor_(el, type) {
@@ -1041,12 +1137,11 @@ function fillSheetsTemplate_(ssId, values) {
       var entries = values.lists[name] || [];
       cols.forEach(function (c, j) {
         var cells = sh.createTextFinder('{{' + name + '_' + c + '}}').matchEntireCell(false).findAll();
-        cells.forEach(function (cell) {
-          var r0 = cell.getRow(), c0 = cell.getColumn();
-          if (entries.length === 0) { cell.setValue(''); return; }
-          var colValues = entries.map(function (e) { return [e[j] || '']; });
-          sh.getRange(r0, c0, colValues.length, 1).setValues(colValues);
-        });
+        if (cells.length === 0) return;
+        cells.sort(function (x, y) { return x.getRow() - y.getRow() || x.getColumn() - y.getColumn(); });
+        var colValues = entries.map(function (e) { return e[j] || ''; });
+        var plan = planSheetListWrites_(cells.map(function (x) { return [x.getRow(), x.getColumn()]; }), colValues);
+        plan.forEach(function (w) { sh.getRange(w[0], w[1]).setValue(w[2]); });
       });
     });
     Object.keys(values.single).forEach(function (k) {
@@ -1056,6 +1151,25 @@ function fillSheetsTemplate_(ssId, values) {
     sh.createTextFinder('\\{\\{[^}]*\\}\\}').useRegularExpression(true).replaceAllWith('');
   });
   SpreadsheetApp.flush();
+}
+
+/**
+ * スプレッドシートの行リスト書き込み計画（純粋関数）。
+ *  slots: [[row, col], ...]（行順）。1 つなら下方向に展開、複数なら順に埋めて余りは最後の下に続ける。
+ *  戻り値: [[row, col, value], ...]
+ */
+function planSheetListWrites_(slots, values) {
+  var out = [];
+  if (slots.length === 0) return out;
+  if (slots.length === 1) {
+    if (values.length === 0) return [[slots[0][0], slots[0][1], '']];
+    values.forEach(function (v, i) { out.push([slots[0][0] + i, slots[0][1], v]); });
+    return out;
+  }
+  slots.forEach(function (s, i) { out.push([s[0], s[1], i < values.length ? values[i] : '']); });
+  var last = slots[slots.length - 1];
+  for (var k = slots.length; k < values.length; k++) out.push([last[0] + (k - slots.length) + 1, last[1], values[k]]);
+  return out;
 }
 
 // ---------------- 診断とトークン自動挿入
@@ -1092,12 +1206,36 @@ function templateText_(tpl) {
 /** ラベル文字列 → トークン（該当なしは ''） */
 function labelToToken_(label) {
   var s = nz_(label).replace(/[\s　※:：・()（）]/g, '');
-  if (!s || s.length > 14) return '';
+  if (!s || s.length > 40) return '';
+  if (/書$/.test(s) || /現在$/.test(s)) return ''; // 「職務経歴書」などのタイトル、「年 月 日現在」
   for (var i = 0; i < KL.LABEL_TO_TOKEN.length; i++) {
     var key = KL.LABEL_TO_TOKEN[i][0].replace(/[\s　・]/g, '');
     if (s.indexOf(key) === 0) return KL.LABEL_TO_TOKEN[i][1];
   }
   return '';
+}
+
+/**
+ * 文脈込みでトークンを決める（純粋関数）。
+ *  below: 直下のラベル。「ふりがな」の直下が現住所／連絡先なら、それぞれのふりがなにする
+ *  used : すでに入れた単一値トークン。連絡先欄の 2 つ目の「電話」などは入れない
+ */
+function resolveLabelToken_(label, below, used) {
+  var t = labelToToken_(label);
+  if (!t) return '';
+  if (t === '{{ふりがな}}') {
+    var b = labelToToken_(below);
+    if (b === '{{現住所}}') t = '{{現住所ふりがな}}';
+    else if (b === '{{連絡先}}') t = '{{連絡先ふりがな}}';
+  }
+  if (!listNameOfToken_(t) && used[t]) return '';
+  used[t] = true;
+  return t;
+}
+
+/** 右隣が埋まっているとき、直下や同じセルに入れてよい「文章欄」のトークン */
+function isBlockToken_(t) {
+  return ['{{志望動機}}', '{{本人希望}}', '{{職務要約}}', '{{自己PR}}', '{{経験能力}}', '{{職務経歴詳細}}'].indexOf(t) >= 0;
 }
 
 /** リスト系トークン {{学歴職歴_内容}} → 名前 */
@@ -1106,19 +1244,21 @@ function listNameOfToken_(token) {
   return m ? m[1] : '';
 }
 
-/** ドキュメントの表を走査し、ラベルの右隣（リストは次の行）にトークンを書く。挿入数を返す */
+/** ドキュメントを走査し、ラベルの右隣（リストは次の行、文章欄は直下）にトークンを書く。挿入数を返す */
 function autoInsertTokensDoc_(docId) {
   var doc = DocumentApp.openById(docId);
   var body = doc.getBody();
   var count = 0;
-  var tables = body.getTables();
-  tables.forEach(function (table) {
+  var used = {};
+  body.getTables().forEach(function (table) {
     var nRows = table.getNumRows();
     for (var r = 0; r < nRows; r++) {
       var row = table.getRow(r);
       var nCells = row.getNumCells();
       for (var c = 0; c < nCells; c++) {
-        var token = labelToToken_(row.getCell(c).getText());
+        var cell = row.getCell(c);
+        var below = (r + 1 < nRows && c < table.getRow(r + 1).getNumCells()) ? table.getRow(r + 1).getCell(c).getText() : '';
+        var token = resolveLabelToken_(cell.getText(), below, used);
         if (!token) continue;
         var listName = listNameOfToken_(token);
         if (listName) {
@@ -1127,16 +1267,47 @@ function autoInsertTokensDoc_(docId) {
           if (nz_(next.getText()) !== '') continue;
           var cols = KL.TOKENS_LIST[listName].cols;
           var n = next.getNumCells();
-          // 右端をお内容、その左 2 つを年・月とみなす
+          // 右端を内容、その左 2 つを年・月とみなす
           var map = n >= 3 ? [[n - 3, 0], [n - 2, 1], [n - 1, 2]] : [[n - 1, 2]];
           map.forEach(function (pair) { next.getCell(pair[0]).setText('{{' + listName + '_' + cols[pair[1]] + '}}'); count++; });
           r++; // 次の行は処理済み
         } else if (c + 1 < nCells && nz_(row.getCell(c + 1).getText()) === '') {
           row.getCell(c + 1).setText(token); count++;
+        } else if (isBlockToken_(token)) {
+          if (r + 1 < nRows && c < table.getRow(r + 1).getNumCells() && nz_(below) === '') {
+            table.getRow(r + 1).getCell(c).setText(token);
+          } else {
+            cell.appendParagraph(token);
+          }
+          count++;
         }
       }
     }
   });
+  // 表の外の見出し段落（職務経歴書に多い「■職務要約」「氏名：」など）
+  var n = body.getNumChildren();
+  for (var i = 0; i < n; i++) {
+    var el = body.getChild(i);
+    if (el.getType() !== DocumentApp.ElementType.PARAGRAPH) continue;
+    var p = el.asParagraph();
+    var text = nz_(p.getText());
+    var inline = text.match(/^(氏\s*名|作成日|作成)\s*[:：]\s*$/);
+    if (inline) {
+      var tk = /氏/.test(inline[1]) ? '{{氏名}}' : '{{作成日}}';
+      if (!used[tk]) { p.appendText(tk); used[tk] = true; count++; }
+      continue;
+    }
+    var token2 = resolveLabelToken_(text.replace(/^[■□●◆【\[]+|[】\]]+$/g, ''), '', used);
+    if (!isBlockToken_(token2)) continue;
+    var nextEl = i + 1 < n ? body.getChild(i + 1) : null;
+    if (nextEl && nextEl.getType() === DocumentApp.ElementType.PARAGRAPH && nz_(nextEl.asParagraph().getText()) === '') {
+      nextEl.asParagraph().setText(token2);
+    } else {
+      body.insertParagraph(i + 1, token2);
+      n++; i++;
+    }
+    count++;
+  }
   doc.saveAndClose();
   return count;
 }
@@ -1145,11 +1316,12 @@ function autoInsertTokensDoc_(docId) {
 function autoInsertTokensSheet_(ssId) {
   var ss = SpreadsheetApp.openById(ssId);
   var count = 0;
+  var used = {};
   ss.getSheets().forEach(function (sh) {
     var vals = sh.getDataRange().getValues();
     for (var r = 0; r < vals.length; r++) {
       for (var c = 0; c < vals[r].length; c++) {
-        var token = labelToToken_(vals[r][c]);
+        var token = resolveLabelToken_(vals[r][c], r + 1 < vals.length ? vals[r + 1][c] : '', used);
         if (!token) continue;
         var listName = listNameOfToken_(token);
         if (listName) {
@@ -1169,7 +1341,9 @@ function autoInsertTokensSheet_(ssId) {
           if (mCol >= 0) { sh.getRange(r + 2, mCol + 1).setValue('{{' + listName + '_' + cols[1] + '}}'); count++; }
           sh.getRange(r + 2, c + 1).setValue('{{' + listName + '_' + cols[2] + '}}'); count++;
         } else if (c + 1 < vals[r].length && nz_(vals[r][c + 1]) === '') {
-          sh.getRange(r + 1, c + 2).setValue(token); count++;
+          sh.getRange(r + 1, c + 2).setValue(token); vals[r][c + 1] = token; count++;
+        } else if (isBlockToken_(token) && r + 1 < vals.length && nz_(vals[r + 1][c]) === '') {
+          sh.getRange(r + 2, c + 1).setValue(token); vals[r + 1][c] = token; count++;
         }
       }
     }
@@ -1274,45 +1448,47 @@ function buildRirekishoDoc_(model, ss, folder) {
   left.getChild(0).asParagraph().editAsText().setFontSize(2);
   right.getChild(0).asParagraph().editAsText().setFontSize(2);
 
-  var infoW = [52, 212, 40, KL.CONTENT_W - photoW - 6 - 52 - 212 - 40];
-  var info = newTable_(left, 8, 4, infoW, 0.75);
+  // 結合セルを使わず、列構成ごとの表を縦に積む（DocumentApp はセル結合を正式に扱えないため）
+  var W = KL.CONTENT_W - photoW - 6;
   var r;
-  // r0 ふりがな
-  r = info.getRow(0); rowHeight_(r, 16);
+  // 氏名
+  var ta = newTable_(left, 2, 2, [52, W - 52], 0.75);
+  r = ta.getRow(0); rowHeight_(r, 16);
   setCell_(r.getCell(0), 'ふりがな', label);
-  setCell_(mergeCells_(r, 1, 3), d.kana, { font: font, size: 9 });
-  // r1 氏名
-  r = info.getRow(1); rowHeight_(r, 34);
+  setCell_(r.getCell(1), d.kana, { font: font, size: 9 });
+  r = ta.getRow(1); rowHeight_(r, 34);
   setCell_(r.getCell(0), '氏　名', label);
-  setCell_(mergeCells_(r, 1, 3), d.name, { font: font, size: 16 });
-  // r2 生年月日 / 性別
-  r = info.getRow(2); rowHeight_(r, 20);
-  setCell_(mergeCells_(r, 0, 1), d.birthLine, { font: font, size: 10, align: 'center' });
-  setCell_(mergeCells_(r, 2, 3), '※性別　' + d.sex, { font: font, size: 9, align: 'center' });
-  // r3 ふりがな（現住所） / 電話
-  r = info.getRow(3); rowHeight_(r, 16);
+  setCell_(r.getCell(1), d.name, { font: font, size: 16 });
+  // 生年月日 / 性別
+  var tb = newStackedTable_(left, 1, 2, [Math.round(W * 0.66), W - Math.round(W * 0.66)], 0.75);
+  r = tb.getRow(0); rowHeight_(r, 20);
+  setCell_(r.getCell(0), d.birthLine, { font: font, size: 10, align: 'center' });
+  setCell_(r.getCell(1), '※性別　' + d.sex, { font: font, size: 9, align: 'center' });
+  // 現住所 / 電話・携帯
+  var telW = 96;
+  var tc = newStackedTable_(left, 2, 4, [52, W - 52 - 40 - telW, 40, telW], 0.75);
+  r = tc.getRow(0); rowHeight_(r, 16);
   setCell_(r.getCell(0), 'ふりがな', label);
   setCell_(r.getCell(1), d.addrKana, { font: font, size: 8 });
   setCell_(r.getCell(2), '電話', label);
   setCell_(r.getCell(3), d.tel, { font: font, size: 9 });
-  // r4 現住所 / 携帯
-  r = info.getRow(4); rowHeight_(r, 40);
+  r = tc.getRow(1); rowHeight_(r, 40);
   setCell_(r.getCell(0), '現住所', label);
   setCell_(r.getCell(1), ['〒 ' + d.postal, d.address], { font: font, size: 10 });
   setCell_(r.getCell(2), '携帯', label);
   setCell_(r.getCell(3), d.mobile, { font: font, size: 9 });
-  // r5 メール
-  r = info.getRow(5); rowHeight_(r, 18);
+  // メール / 連絡先
+  var td = newStackedTable_(left, 3, 2, [52, W - 52], 0.75);
+  r = td.getRow(0); rowHeight_(r, 18);
   setCell_(r.getCell(0), 'E-mail', label);
-  setCell_(mergeCells_(r, 1, 3), d.email, { font: font, size: 10 });
-  // r6 ふりがな（連絡先）
-  r = info.getRow(6); rowHeight_(r, 16);
+  setCell_(r.getCell(1), d.email, { font: font, size: 10 });
+  r = td.getRow(1); rowHeight_(r, 16);
   setCell_(r.getCell(0), 'ふりがな', label);
-  setCell_(mergeCells_(r, 1, 3), d.contactKana, { font: font, size: 8 });
-  // r7 連絡先
-  r = info.getRow(7); rowHeight_(r, 36);
+  setCell_(r.getCell(1), d.contactKana, { font: font, size: 8 });
+  r = td.getRow(2); rowHeight_(r, 36);
   setCell_(r.getCell(0), '連絡先', label);
-  setCell_(mergeCells_(r, 1, 3), ['〒 （現住所以外に連絡を希望する場合のみ記入）', d.contact], { font: font, size: 9 });
+  setCell_(r.getCell(1), ['〒 （現住所以外に連絡を希望する場合のみ記入）', d.contact], { font: font, size: 9 });
+  shrinkTrailingGap_(left);
 
   // 写真枠（30mm×40mm ≒ 85×113pt）
   var photo = newTable_(right, 1, 1, [photoW - 6], 0.75);
@@ -1429,6 +1605,8 @@ function composeShokumu_(model) {
       });
     return {
       header: formatPeriod_(j.startY, j.startM, j.endY, j.endM) + '　' + j.company,
+      period: formatPeriod_(j.startY, j.startM, j.endY, j.endM),
+      company: j.company,
       info: info,
       position: j.position,
       projects: projects
@@ -1515,30 +1693,32 @@ function buildShokumuDoc_(model, ss, folder) {
   // ■職務経歴詳細
   addSectionHeading_(body, '職務経歴詳細', font);
   var dw = [90, KL.CONTENT_W - 90];
+  var sub = { font: font, size: 9, align: 'center', bg: '#f6f6f6' };
   d.companies.forEach(function (c) {
-    // 行数を先に数える
-    var rowCount = 2; // header + info
-    if (c.projects.length === 0) rowCount += 1;
-    c.projects.forEach(function () { rowCount += 4; });
+    // 会社ごとに結合セルなしの 2 列表 1 つ: 在籍期間｜会社名 → 会社概要 → (案件｜期間｜役割・規模｜概要)×n
+    var rowCount = 2 + (c.projects.length === 0 ? 1 : c.projects.length * 4);
     var t = newTable_(body, rowCount, 2, dw, 0.75);
     var idx = 0;
     var r = t.getRow(idx++);
-    setCell_(mergeCells_(r, 0, 1), c.header, { font: font, size: 10, bold: true, bg: '#e8e8e8' });
+    setCell_(r.getCell(0), c.period, { font: font, size: 9, bold: true, align: 'center', bg: '#e8e8e8' });
+    setCell_(r.getCell(1), c.company, { font: font, size: 10, bold: true, bg: '#e8e8e8' });
     r = t.getRow(idx++);
-    setCell_(mergeCells_(r, 0, 1), c.info.length ? c.info : [''], { font: font, size: 8 });
+    setCell_(r.getCell(0), '会社概要', sub);
+    setCell_(r.getCell(1), c.info.length ? c.info : [''], { font: font, size: 8 });
     if (c.projects.length === 0) {
       r = t.getRow(idx++);
-      setCell_(r.getCell(0), '担当業務', { font: font, size: 9, align: 'center', bg: '#f6f6f6' });
+      setCell_(r.getCell(0), '担当業務', sub);
       setCell_(r.getCell(1), c.position || '', { font: font, size: 9 });
     }
     c.projects.forEach(function (p) {
       r = t.getRow(idx++);
-      setCell_(mergeCells_(r, 0, 1), p.name, { font: font, size: 10, bold: true, bg: '#f6f6f6' });
+      setCell_(r.getCell(0), '案件', { font: font, size: 9, bold: true, align: 'center', bg: '#eef2f7' });
+      setCell_(r.getCell(1), p.name, { font: font, size: 10, bold: true, bg: '#eef2f7' });
       r = t.getRow(idx++);
-      setCell_(r.getCell(0), '期間', { font: font, size: 9, align: 'center', bg: '#f6f6f6' });
+      setCell_(r.getCell(0), '期間', sub);
       setCell_(r.getCell(1), p.period, { font: font, size: 9 });
       r = t.getRow(idx++);
-      setCell_(r.getCell(0), '役割・規模', { font: font, size: 9, align: 'center', bg: '#f6f6f6' });
+      setCell_(r.getCell(0), '役割・規模', sub);
       setCell_(r.getCell(1), p.role.length ? p.role : [''], { font: font, size: 9 });
       r = t.getRow(idx++);
       setCell_(r.getCell(0), '概要', { font: font, size: 9, align: 'center', bg: '#f6f6f6', valign: 'top' });
@@ -1774,7 +1954,11 @@ function parseAddress_(address) {
   var parts = nz_(address).split('!').map(function (x) { return x.trim(); });
   if (parts.length < 2) return null;
   var sheet = parts[0];
-  var isKv = (sheet === KL.SHEET.BASIC || sheet === KL.SHEET.TEXTS || sheet === KL.SHEET.SETTINGS);
+  // AI が書き換えてよいのは入力シートだけ（設定・チェック結果などは不可）
+  var allowed = [KL.SHEET.BASIC, KL.SHEET.TEXTS, KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS,
+    KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS];
+  if (allowed.indexOf(sheet) < 0) return null;
+  var isKv = (sheet === KL.SHEET.BASIC || sheet === KL.SHEET.TEXTS);
   if (isKv) return { sheet: sheet, key: parts[1] };
   var m = parts[1].match(/^行\s*(\d+)$/);
   if (!m) return null;
@@ -1894,12 +2078,20 @@ function setupKeyValueSheet_(ss, name, keys, sampleMap) {
   var existing = {};
   var rows = sh.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) existing[nz_(rows[i][0])] = i + 1;
+  var legacyValue = function (key) {
+    if (name === KL.SHEET.SETTINGS && key === 'ファイル名パターン') {
+      var pr = existing['ファイル名の接頭辞'] ? nz_(rows[existing['ファイル名の接頭辞'] - 1][1]) : '';
+      return pr ? pr + '{氏名}様_{種別}' : '';
+    }
+    var old = name === KL.SHEET.SETTINGS ? KL.LEGACY_SETTINGS[key] : null;
+    return old && existing[old] ? nz_(rows[existing[old] - 1][1]) : '';
+  };
   keys.forEach(function (k) {
     var r = existing[k[0]];
     if (!r) {
       r = sh.getLastRow() + 1;
       sh.getRange(r, 1).setValue(k[0]);
-      var v = sampleMap && sampleMap[k[0]] !== undefined ? sampleMap[k[0]] : k[1];
+      var v = sampleMap && sampleMap[k[0]] !== undefined ? sampleMap[k[0]] : (legacyValue(k[0]) || k[1]);
       sh.getRange(r, 2).setValue(v);
     } else if (sampleMap && nz_(sh.getRange(r, 2).getValue()) === '' && sampleMap[k[0]] !== undefined) {
       sh.getRange(r, 2).setValue(sampleMap[k[0]]);
@@ -2125,18 +2317,22 @@ function buildAndNotify_(doRireki, doShokumu) {
   var ui = SpreadsheetApp.getUi();
   var model = loadModel(ss);
   if (!guardErrors_(ss, model)) return;
-  var folder = chooseOutputFolder_(ss, model.settings, ui);
-  if (!folder) return;
-  var msg = ['保存先: ' + folder.getName() + '\n' + folder.getUrl()];
-  if (doRireki) {
-    var r = buildRirekishoDoc_(model, ss, folder);
-    msg.push('履歴書:\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : ''));
+  try {
+    var folder = chooseOutputFolder_(ss, model.settings, ui);
+    if (!folder) return;
+    var msg = ['保存先: ' + folder.getName() + '\n' + folder.getUrl()];
+    if (doRireki) {
+      var r = buildRirekishoDoc_(model, ss, folder);
+      msg.push('履歴書:\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : ''));
+    }
+    if (doShokumu) {
+      var s = buildShokumuDoc_(model, ss, folder);
+      msg.push('職務経歴書:\n' + s.docUrl + (s.pdfUrl ? '\nPDF: ' + s.pdfUrl : ''));
+    }
+    ui.alert('生成完了', msg.join('\n\n'), ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('生成できませんでした', String(e.message || e), ui.ButtonSet.OK);
   }
-  if (doShokumu) {
-    var s = buildShokumuDoc_(model, ss, folder);
-    msg.push('職務経歴書:\n' + s.docUrl + (s.pdfUrl ? '\nPDF: ' + s.pdfUrl : ''));
-  }
-  ui.alert('生成完了', msg.join('\n\n'), ui.ButtonSet.OK);
 }
 
 // ---------------- AI

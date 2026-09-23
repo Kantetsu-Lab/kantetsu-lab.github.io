@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "fetch": "tsx scripts/fetch-content.mts",
-    "prebuild": "npm run fetch"
+    "prebuild": "npm run fetch",
+    "test:gas": "node gas/resume-kit/test/run-tests.mjs && node gas/resume-kit/test/e2e.mjs",
+    "build:gas": "node gas/resume-kit/bundle.mjs"
   },
   "dependencies": {
     "@notionhq/client": "^5.23.0",

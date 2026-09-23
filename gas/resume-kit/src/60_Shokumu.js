@@ -35,6 +35,8 @@ function composeShokumu_(model) {
       });
     return {
       header: formatPeriod_(j.startY, j.startM, j.endY, j.endM) + '　' + j.company,
+      period: formatPeriod_(j.startY, j.startM, j.endY, j.endM),
+      company: j.company,
       info: info,
       position: j.position,
       projects: projects
@@ -121,30 +123,32 @@ function buildShokumuDoc_(model, ss, folder) {
   // ■職務経歴詳細
   addSectionHeading_(body, '職務経歴詳細', font);
   var dw = [90, KL.CONTENT_W - 90];
+  var sub = { font: font, size: 9, align: 'center', bg: '#f6f6f6' };
   d.companies.forEach(function (c) {
-    // 行数を先に数える
-    var rowCount = 2; // header + info
-    if (c.projects.length === 0) rowCount += 1;
-    c.projects.forEach(function () { rowCount += 4; });
+    // 会社ごとに結合セルなしの 2 列表 1 つ: 在籍期間｜会社名 → 会社概要 → (案件｜期間｜役割・規模｜概要)×n
+    var rowCount = 2 + (c.projects.length === 0 ? 1 : c.projects.length * 4);
     var t = newTable_(body, rowCount, 2, dw, 0.75);
     var idx = 0;
     var r = t.getRow(idx++);
-    setCell_(mergeCells_(r, 0, 1), c.header, { font: font, size: 10, bold: true, bg: '#e8e8e8' });
+    setCell_(r.getCell(0), c.period, { font: font, size: 9, bold: true, align: 'center', bg: '#e8e8e8' });
+    setCell_(r.getCell(1), c.company, { font: font, size: 10, bold: true, bg: '#e8e8e8' });
     r = t.getRow(idx++);
-    setCell_(mergeCells_(r, 0, 1), c.info.length ? c.info : [''], { font: font, size: 8 });
+    setCell_(r.getCell(0), '会社概要', sub);
+    setCell_(r.getCell(1), c.info.length ? c.info : [''], { font: font, size: 8 });
     if (c.projects.length === 0) {
       r = t.getRow(idx++);
-      setCell_(r.getCell(0), '担当業務', { font: font, size: 9, align: 'center', bg: '#f6f6f6' });
+      setCell_(r.getCell(0), '担当業務', sub);
       setCell_(r.getCell(1), c.position || '', { font: font, size: 9 });
     }
     c.projects.forEach(function (p) {
       r = t.getRow(idx++);
-      setCell_(mergeCells_(r, 0, 1), p.name, { font: font, size: 10, bold: true, bg: '#f6f6f6' });
+      setCell_(r.getCell(0), '案件', { font: font, size: 9, bold: true, align: 'center', bg: '#eef2f7' });
+      setCell_(r.getCell(1), p.name, { font: font, size: 10, bold: true, bg: '#eef2f7' });
       r = t.getRow(idx++);
-      setCell_(r.getCell(0), '期間', { font: font, size: 9, align: 'center', bg: '#f6f6f6' });
+      setCell_(r.getCell(0), '期間', sub);
       setCell_(r.getCell(1), p.period, { font: font, size: 9 });
       r = t.getRow(idx++);
-      setCell_(r.getCell(0), '役割・規模', { font: font, size: 9, align: 'center', bg: '#f6f6f6' });
+      setCell_(r.getCell(0), '役割・規模', sub);
       setCell_(r.getCell(1), p.role.length ? p.role : [''], { font: font, size: 9 });
       r = t.getRow(idx++);
       setCell_(r.getCell(0), '概要', { font: font, size: 9, align: 'center', bg: '#f6f6f6', valign: 'top' });

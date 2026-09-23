@@ -131,6 +131,14 @@ function runChecks(model) {
   else if (pc < 200 || pc > 700) add('WARN', KL.SHEET.TEXTS, '自己PR', pc + '字です。300〜600字が目安。');
   if (model.texts.summary && !hasNumber_(model.texts.summary)) add('WARN', KL.SHEET.TEXTS, '職務要約', '数値実績がありません。冒頭で読み手を掴むために 1 つは入れます。');
 
+  // ---- 設定
+  var st = model.settings || {};
+  ['履歴書テンプレート', '職務経歴書テンプレート'].forEach(function (k) {
+    if (nz_(st[k]) && !extractDriveId_(st[k])) add('ERROR', KL.SHEET.SETTINGS, k, 'URL か ID として読めません。');
+  });
+  if (nz_(st['AIプロバイダ']) && !/^(gemini|claude)$/i.test(nz_(st['AIプロバイダ']))) add('WARN', KL.SHEET.SETTINGS, 'AIプロバイダ', 'gemini か claude を指定してください。');
+  if (nz_(st['ファイル名パターン']) && st['ファイル名パターン'].indexOf('{種別}') < 0) add('INFO', KL.SHEET.SETTINGS, 'ファイル名パターン', '{種別} が無いため末尾に自動で付けます（履歴書と職務経歴書が同名になるのを防ぐため）。');
+
   // ---- 全体: 和暦・全角数字
   var allText = [b['現住所'], model.texts.summary, model.texts.pr]
     .concat(model.projects.map(function (p) { return p.overview + p.tasks.join('') + p.results; }))

@@ -98,18 +98,22 @@ function buildAndNotify_(doRireki, doShokumu) {
   var ui = SpreadsheetApp.getUi();
   var model = loadModel(ss);
   if (!guardErrors_(ss, model)) return;
-  var folder = chooseOutputFolder_(ss, model.settings, ui);
-  if (!folder) return;
-  var msg = ['保存先: ' + folder.getName() + '\n' + folder.getUrl()];
-  if (doRireki) {
-    var r = buildRirekishoDoc_(model, ss, folder);
-    msg.push('履歴書:\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : ''));
+  try {
+    var folder = chooseOutputFolder_(ss, model.settings, ui);
+    if (!folder) return;
+    var msg = ['保存先: ' + folder.getName() + '\n' + folder.getUrl()];
+    if (doRireki) {
+      var r = buildRirekishoDoc_(model, ss, folder);
+      msg.push('履歴書:\n' + r.docUrl + (r.pdfUrl ? '\nPDF: ' + r.pdfUrl : ''));
+    }
+    if (doShokumu) {
+      var s = buildShokumuDoc_(model, ss, folder);
+      msg.push('職務経歴書:\n' + s.docUrl + (s.pdfUrl ? '\nPDF: ' + s.pdfUrl : ''));
+    }
+    ui.alert('生成完了', msg.join('\n\n'), ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('生成できませんでした', String(e.message || e), ui.ButtonSet.OK);
   }
-  if (doShokumu) {
-    var s = buildShokumuDoc_(model, ss, folder);
-    msg.push('職務経歴書:\n' + s.docUrl + (s.pdfUrl ? '\nPDF: ' + s.pdfUrl : ''));
-  }
-  ui.alert('生成完了', msg.join('\n\n'), ui.ButtonSet.OK);
 }
 
 // ---------------- AI

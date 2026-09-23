@@ -91,12 +91,22 @@ function newTable_(container, rows, cols, widths, borderWidth) {
   return table;
 }
 
-/** 行の cell[from..to] を水平結合して結合後のセルを返す */
-function mergeCells_(row, from, to) {
-  for (var i = to; i > from; i--) {
-    row.getCell(from + 1).merge();
-  }
-  return row.getCell(from);
+/** コンテナ末尾の空段落（表の直後に自動で入るもの）を最小化する */
+function shrinkTrailingGap_(container) {
+  var n = container.getNumChildren();
+  if (n === 0) return;
+  var last = container.getChild(n - 1);
+  if (last.getType() !== DocumentApp.ElementType.PARAGRAPH) return;
+  var p = last.asParagraph();
+  if (p.getText() !== '') return;
+  p.editAsText().setFontSize(1);
+  p.setSpacingBefore(0).setSpacingAfter(0).setLineSpacing(1);
+}
+
+/** 直前の表と隙間なく積む表（間に自動で入る空段落を最小化してから追加） */
+function newStackedTable_(container, rows, cols, widths, borderWidth) {
+  shrinkTrailingGap_(container);
+  return newTable_(container, rows, cols, widths, borderWidth);
 }
 
 /** 行の最小高さを設定 */
@@ -155,7 +165,7 @@ function chooseOutputFolder_(ss, settings, ui) {
   else {
     folder = resolveFolder_(spec);
     if (!folder) {
-      if (extractDriveId_(spec) && /^[-\w]{25,}$/.test(spec)) throw new Error('フォルダが見つかりません: ' + spec);
+      if (/^https?:\/\//.test(spec) || /^[-\w]{25,}$/.test(spec)) throw new Error('フォルダが見つからないか、アクセス権がありません: ' + spec);
       folder = DriveApp.getRootFolder().createFolder(spec);
     }
   }
@@ -196,6 +206,8 @@ function finalizeDoc_(doc, folder, settings) {
 /** ファイル名: 設定「ファイル名パターン」({氏名} {種別} {日付}) */
 function outputFileName_(model, kind) {
   var pattern = nz_(model.settings['ファイル名パターン']) || '{氏名}様_{種別}';
+  // 種別が無いと履歴書と職務経歴書が同名になり、PDF の上書きで互いを消してしまう
+  if (pattern.indexOf('{種別}') < 0) pattern += '_{種別}';
   return pattern
     .replace(/\{氏名\}/g, nz_(model.basic['氏名']))
     .replace(/\{種別\}/g, kind)

@@ -27,9 +27,12 @@ description: 履歴書・職務経歴書の作成支援。Kantetsu Lab 標準フ
 ## コード改修の手順
 
 ```bash
-node gas/resume-kit/test/run-tests.mjs   # 純粋ロジックのテスト
-node gas/resume-kit/bundle.mjs           # dist/resume-kit.gs 再生成（必ずコミットに含める）
+npm run test:gas    # 単体テスト + GAS モック上の通しテスト（test/e2e.mjs）
+npm run build:gas   # dist/resume-kit.gs 再生成（必ずコミットに含める）
 ```
+
+- 新しい GAS メソッドを使ったら `test/gas-mock.mjs` にも足す。実 API に存在するメソッド名・戻り値だけを再現すること
+- セル結合（TableCell.merge）は使わない。列構成が違う行は表を分けて `newStackedTable_` で積む
 
 - 構成: `00_Config`（定数・シート定義・添削ルール・テンプレートトークン）→ `10_Util`（純粋関数）→ `20_Data`（シート→モデル）→ `30_Check` → `40_DocHelpers`（保存先選択・ファイル名・PDF）→ `45_Template`（会社規定の用紙への流し込み・診断・トークン自動挿入）→ `50_Rirekisho` / `60_Shokumu`（compose = 純粋、render = DocumentApp）→ `70_AiReview`（Gemini/Claude、提案 JSON、反映）→ `80_Setup` → `90_Menu`
 - グローバル `KL.*` への代入は `00_Config` にだけ書く（GAS のファイル読み込み順に依存しないため）

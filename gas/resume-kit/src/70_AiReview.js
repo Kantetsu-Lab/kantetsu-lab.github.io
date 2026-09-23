@@ -194,7 +194,11 @@ function parseAddress_(address) {
   var parts = nz_(address).split('!').map(function (x) { return x.trim(); });
   if (parts.length < 2) return null;
   var sheet = parts[0];
-  var isKv = (sheet === KL.SHEET.BASIC || sheet === KL.SHEET.TEXTS || sheet === KL.SHEET.SETTINGS);
+  // AI が書き換えてよいのは入力シートだけ（設定・チェック結果などは不可）
+  var allowed = [KL.SHEET.BASIC, KL.SHEET.TEXTS, KL.SHEET.EDUCATION, KL.SHEET.JOBS, KL.SHEET.PROJECTS,
+    KL.SHEET.SKILLS, KL.SHEET.LICENSES, KL.SHEET.ACHIEVEMENTS];
+  if (allowed.indexOf(sheet) < 0) return null;
+  var isKv = (sheet === KL.SHEET.BASIC || sheet === KL.SHEET.TEXTS);
   if (isKv) return { sheet: sheet, key: parts[1] };
   var m = parts[1].match(/^行\s*(\d+)$/);
   if (!m) return null;

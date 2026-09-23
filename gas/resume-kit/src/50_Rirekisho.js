@@ -92,45 +92,47 @@ function buildRirekishoDoc_(model, ss, folder) {
   left.getChild(0).asParagraph().editAsText().setFontSize(2);
   right.getChild(0).asParagraph().editAsText().setFontSize(2);
 
-  var infoW = [52, 212, 40, KL.CONTENT_W - photoW - 6 - 52 - 212 - 40];
-  var info = newTable_(left, 8, 4, infoW, 0.75);
+  // 結合セルを使わず、列構成ごとの表を縦に積む（DocumentApp はセル結合を正式に扱えないため）
+  var W = KL.CONTENT_W - photoW - 6;
   var r;
-  // r0 ふりがな
-  r = info.getRow(0); rowHeight_(r, 16);
+  // 氏名
+  var ta = newTable_(left, 2, 2, [52, W - 52], 0.75);
+  r = ta.getRow(0); rowHeight_(r, 16);
   setCell_(r.getCell(0), 'ふりがな', label);
-  setCell_(mergeCells_(r, 1, 3), d.kana, { font: font, size: 9 });
-  // r1 氏名
-  r = info.getRow(1); rowHeight_(r, 34);
+  setCell_(r.getCell(1), d.kana, { font: font, size: 9 });
+  r = ta.getRow(1); rowHeight_(r, 34);
   setCell_(r.getCell(0), '氏　名', label);
-  setCell_(mergeCells_(r, 1, 3), d.name, { font: font, size: 16 });
-  // r2 生年月日 / 性別
-  r = info.getRow(2); rowHeight_(r, 20);
-  setCell_(mergeCells_(r, 0, 1), d.birthLine, { font: font, size: 10, align: 'center' });
-  setCell_(mergeCells_(r, 2, 3), '※性別　' + d.sex, { font: font, size: 9, align: 'center' });
-  // r3 ふりがな（現住所） / 電話
-  r = info.getRow(3); rowHeight_(r, 16);
+  setCell_(r.getCell(1), d.name, { font: font, size: 16 });
+  // 生年月日 / 性別
+  var tb = newStackedTable_(left, 1, 2, [Math.round(W * 0.66), W - Math.round(W * 0.66)], 0.75);
+  r = tb.getRow(0); rowHeight_(r, 20);
+  setCell_(r.getCell(0), d.birthLine, { font: font, size: 10, align: 'center' });
+  setCell_(r.getCell(1), '※性別　' + d.sex, { font: font, size: 9, align: 'center' });
+  // 現住所 / 電話・携帯
+  var telW = 96;
+  var tc = newStackedTable_(left, 2, 4, [52, W - 52 - 40 - telW, 40, telW], 0.75);
+  r = tc.getRow(0); rowHeight_(r, 16);
   setCell_(r.getCell(0), 'ふりがな', label);
   setCell_(r.getCell(1), d.addrKana, { font: font, size: 8 });
   setCell_(r.getCell(2), '電話', label);
   setCell_(r.getCell(3), d.tel, { font: font, size: 9 });
-  // r4 現住所 / 携帯
-  r = info.getRow(4); rowHeight_(r, 40);
+  r = tc.getRow(1); rowHeight_(r, 40);
   setCell_(r.getCell(0), '現住所', label);
   setCell_(r.getCell(1), ['〒 ' + d.postal, d.address], { font: font, size: 10 });
   setCell_(r.getCell(2), '携帯', label);
   setCell_(r.getCell(3), d.mobile, { font: font, size: 9 });
-  // r5 メール
-  r = info.getRow(5); rowHeight_(r, 18);
+  // メール / 連絡先
+  var td = newStackedTable_(left, 3, 2, [52, W - 52], 0.75);
+  r = td.getRow(0); rowHeight_(r, 18);
   setCell_(r.getCell(0), 'E-mail', label);
-  setCell_(mergeCells_(r, 1, 3), d.email, { font: font, size: 10 });
-  // r6 ふりがな（連絡先）
-  r = info.getRow(6); rowHeight_(r, 16);
+  setCell_(r.getCell(1), d.email, { font: font, size: 10 });
+  r = td.getRow(1); rowHeight_(r, 16);
   setCell_(r.getCell(0), 'ふりがな', label);
-  setCell_(mergeCells_(r, 1, 3), d.contactKana, { font: font, size: 8 });
-  // r7 連絡先
-  r = info.getRow(7); rowHeight_(r, 36);
+  setCell_(r.getCell(1), d.contactKana, { font: font, size: 8 });
+  r = td.getRow(2); rowHeight_(r, 36);
   setCell_(r.getCell(0), '連絡先', label);
-  setCell_(mergeCells_(r, 1, 3), ['〒 （現住所以外に連絡を希望する場合のみ記入）', d.contact], { font: font, size: 9 });
+  setCell_(r.getCell(1), ['〒 （現住所以外に連絡を希望する場合のみ記入）', d.contact], { font: font, size: 9 });
+  shrinkTrailingGap_(left);
 
   // 写真枠（30mm×40mm ≒ 85×113pt）
   var photo = newTable_(right, 1, 1, [photoW - 6], 0.75);

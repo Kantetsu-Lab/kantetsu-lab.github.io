@@ -213,4 +213,22 @@ test('parseAddress: 番地の分解', () => {
   assert.equal(ctx.parseAddress_('なんとなく'), null);
 });
 
+test('resolveLabelToken: 文脈と重複', () => {
+  const used = {};
+  assert.equal(ctx.resolveLabelToken_('ふりがな', '氏名', used), '{{ふりがな}}');
+  assert.equal(ctx.resolveLabelToken_('ふりがな', '現住所', used), '{{現住所ふりがな}}');
+  assert.equal(ctx.resolveLabelToken_('電話', '', used), '{{電話}}');
+  assert.equal(ctx.resolveLabelToken_('TEL.', '', used), '', '2 つ目の電話は入れない');
+  assert.equal(ctx.resolveLabelToken_('職 務 経 歴 書', '', used), '', 'タイトル');
+  assert.equal(ctx.resolveLabelToken_('志望の動機、特技、好きな学科、アピールポイントなど', '', used), '{{志望動機}}');
+  assert.ok(ctx.isBlockToken_('{{自己PR}}') && !ctx.isBlockToken_('{{氏名}}'));
+});
+test('planSheetListWrites: 展開 / 固定行 / 0 件', () => {
+  const j = (x) => JSON.stringify(x);
+  assert.equal(j(ctx.planSheetListWrites_([[5, 2]], ['a', 'b'])), j([[5, 2, 'a'], [6, 2, 'b']]));
+  assert.equal(j(ctx.planSheetListWrites_([[5, 2], [7, 2]], ['a'])), j([[5, 2, 'a'], [7, 2, '']]));
+  assert.equal(j(ctx.planSheetListWrites_([[5, 2], [7, 2]], ['a', 'b', 'c'])), j([[5, 2, 'a'], [7, 2, 'b'], [8, 2, 'c']]));
+  assert.equal(j(ctx.planSheetListWrites_([[5, 2]], [])), j([[5, 2, '']]));
+});
+
 console.log(`\n${passed} tests passed`);
