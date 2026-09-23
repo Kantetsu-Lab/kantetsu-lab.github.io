@@ -265,6 +265,9 @@ test('見開きの用紙: 左の表を上から埋めて右の表へ続き、名
   assert.deepEqual(right[3], ['', '', '', '以上']);
   assert.deepEqual(right[5], ['', '', '', '']);
   assert.equal(g[25][3], '（左の表の下）', '表の外は触らない');
+  const al = gas.sheetAlign(out.id, '履歴書');
+  assert.equal(al['20,4'], 'center', '見出し「学歴」は中央揃え');
+  assert.equal(al['21,4'], undefined);
 });
 
 console.log('AI 分析 → 提案 → 反映');

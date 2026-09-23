@@ -196,6 +196,7 @@ export function createGas() {
       clearContent: () => { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) if (get(sh, r + i, c + j) !== '') put(sh, r + i, c + j, ''); return api; },
       insertCheckboxes: () => { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) if (get(sh, r + i, c + j) === '') put(sh, r + i, c + j, false); return api; },
     };
+    api.setHorizontalAlignment = (a) => { sh.align = sh.align || {}; sh.align[`${r},${c}`] = a; return api; };
     return chain(api, ['setFontWeight', 'setBackground', 'setFontColor', 'setWrap', 'setVerticalAlignment', 'setNumberFormat', 'setDataValidation']);
   }
   function sheetApi(sh) {
@@ -330,6 +331,7 @@ export function createGas() {
     docBody: (id) => files.get(id).doc.body,
     docFooter: (id) => files.get(id).doc.footer,
     sheetGrid: (id, name) => files.get(id).ss.sheets.find((s) => s.name === name).grid,
+    sheetAlign: (id, name) => files.get(id).ss.sheets.find((s) => s.name === name).align || {},
     liveFiles: (folderId) => [...files.values()].filter((f) => f.folder === folderId && !f.trashed),
   };
 }

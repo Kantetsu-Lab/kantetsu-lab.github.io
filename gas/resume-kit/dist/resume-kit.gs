@@ -1,7 +1,7 @@
 /*
  * 履歴書・職務経歴書・推薦書ジェネレーター（Google Apps Script）
  * このファイルは src/*.js から自動生成されています。直接編集しないでください。
- * generated: 2026-09-23T03:37:32.402Z
+ * generated: 2026-09-23T03:44:17.425Z
  */
 // ===== 00_Config.js =====
 /**
@@ -189,7 +189,7 @@ KL.LEGACY_SETTINGS = { '出力フォルダ': '出力フォルダID', 'Claudeモ�
 // 単一値トークン: {{氏名}} のように用紙に書いておくと置換される
 KL.TOKENS_SINGLE = [
   ['氏名', '氏名'], ['ふりがな', 'ふりがな（氏名）'], ['生年月日', '1997年5月10日 の形式'], ['生年月日_年', ''], ['生年月日_月', ''], ['生年月日_日', ''],
-  ['年齢', '満年齢（数字のみ）'], ['性別', ''], ['郵便番号', ''], ['現住所', ''], ['現住所ふりがな', ''], ['電話', ''], ['携帯', ''], ['メール', ''],
+  ['年齢', '満年齢（数字のみ）'], ['性別', ''], ['郵便番号', ''], ['現住所', ''], ['現住所ふりがな', ''], ['電話', ''], ['携帯', ''], ['電話番号', '携帯（無ければ電話）'], ['メール', ''],
   ['連絡先', '未入力なら「同上」'], ['連絡先ふりがな', ''], ['作成日', '2026年9月13日 の形式'], ['作成日_年', ''], ['作成日_月', ''], ['作成日_日', ''],
   ['通勤時間', ''], ['扶養家族数', ''], ['配偶者', ''], ['配偶者の扶養義務', ''], ['志望動機', '志望の動機・特技・アピールポイント'], ['本人希望', '本人希望記入欄'],
   ['写真', 'ドキュメントのみ: 写真ファイルIDの画像を挿入'],
@@ -1072,7 +1072,7 @@ function buildTokenValues_(model) {
     '生年月日_日': model.birth ? String(model.birth.getDate()) : '',
     '年齢': model.age === null ? '' : String(model.age),
     '性別': r.sex, '郵便番号': r.postal, '現住所': r.address, '現住所ふりがな': r.addrKana,
-    '電話': r.tel, '携帯': r.mobile, 'メール': r.email, '連絡先': r.contact, '連絡先ふりがな': r.contactKana,
+    '電話': r.tel, '携帯': r.mobile, '電話番号': r.mobile || r.tel, 'メール': r.email, '連絡先': r.contact, '連絡先ふりがな': r.contactKana,
     '作成日': formatJaDate_(model.asOf),
     '作成日_年': String(model.asOf.getFullYear()), '作成日_月': String(model.asOf.getMonth() + 1), '作成日_日': String(model.asOf.getDate()),
     '通勤時間': r.commute, '扶養家族数': r.dependents, '配偶者': r.spouse, '配偶者の扶養義務': r.spouseSupport,
@@ -1111,7 +1111,8 @@ function buildTokenValues_(model) {
     return '＜' + g.title + '＞\n' + g.items.map(function (it) { return '・' + it; }).join('\n');
   })).filter(function (x) { return x; }).join('\n\n');
   var companies = s.companies.map(function (c) { return companyTokenMap_(c); });
-  var hist = r.historyRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text, row.name, row.kind]; });
+  // 6 番目は揃え位置（見出しの「学歴」「職歴」は中央、「以上」は右）。固定欄の用紙で使う
+  var hist = r.historyRows.filter(function (row) { return row.text !== ''; }).map(function (row) { return [row.y, row.m, row.text, row.name, row.kind, row.align]; });
   var eduRows = [], jobRows = [], mode = '';
   hist.forEach(function (row) {
     if (row[2] === '学歴') { mode = 'edu'; return; }
@@ -1462,7 +1463,13 @@ function fillSheetsTemplate_(ssId, values) {
         cells.sort(function (x, y) { return x.getColumn() - y.getColumn() || x.getRow() - y.getRow(); });
         var colValues = entries.map(function (e) { return e[j] || ''; });
         var plan = planSheetListWrites_(cells.map(function (x) { return [x.getRow(), x.getColumn()]; }), colValues);
-        plan.forEach(function (w) { sh.getRange(w[0], w[1]).setValue(w[2]); });
+        plan.forEach(function (w, i) {
+          var rg = sh.getRange(w[0], w[1]);
+          rg.setValue(w[2]);
+          // 見出し行（学歴・職歴）は中央揃え。名称・内容の欄だけ
+          var align = entries[i] && entries[i][5];
+          if ((c === '名称' || c === '内容') && align === 'center') rg.setHorizontalAlignment('center');
+        });
         if (plan.overflow) warnings[name] = Math.max(warnings[name] || 0, plan.overflow);
       });
     });
